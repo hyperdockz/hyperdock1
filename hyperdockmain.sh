@@ -39,7 +39,7 @@ print_header() {
     clear
     print_logo
     echo -e "  ${B2}$(printf '═%.0s' {1..58})${N}"
-    echo -e "  ${B4}${BOLD}           DEVELOPMENT MANAGEMENT CONSOLE             ${N}"
+    echo -e "  ${B4}${BOLD}           VPS MANAGEMENT CONSOLE             ${N}"
     echo -e "  ${B2}$(printf '═%.0s' {1..58})${N}"
     echo ""
 }
@@ -66,7 +66,7 @@ print_divider() {
 
 print_footer() {
     echo -e "  ${B1}┌$(printf '─%.0s' {1..56})┐${N}"
-    echo -e "  ${B1}│${N}  ${DGRAY}Hyperdock Network © 2024 — All Rights Reserved${N}       ${B1}│${N}"
+    echo -e "  ${B1}│${N}  ${DGRAY}Hyperdock Network © 2026 — All Rights Reserved${N}       ${B1}│${N}"
     echo -e "  ${B1}└$(printf '─%.0s' {1..56})┘${N}"
     echo ""
 }
