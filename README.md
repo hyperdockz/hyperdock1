@@ -1,1 +1,1 @@
-# hyperdock1
+# This is offical installer of bash
