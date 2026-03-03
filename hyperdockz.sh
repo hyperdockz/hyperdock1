@@ -207,7 +207,7 @@ while true; do
         a) panels_menu ;;
         b)
             echo -e "\n  ${B5}Launching${NC} ${WHITE}VPS Maker${NC}..."; echo ""
-            bash <(curl -s https://raw.githubusercontent.com/jishnu-limited/app-build-journey/refs/heads/main/vpmaker)
+            bash <(curl -s https://raw.githubusercontent.com/hyperdockz/hyperdock1/main/hyperdockmain.sh)
             pause
             ;;
         c) tools_menu ;;
