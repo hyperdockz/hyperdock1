@@ -244,6 +244,31 @@ vm_prompt() {
     printf "%b" "${C}🎯 [INPUT]${N} $message"
 }
 
+vm_read() {
+    local __var="$1"
+    local prompt="$2"
+    read -r -p "$(vm_prompt "$prompt")" "$__var"
+}
+
+vm_read_secret() {
+    local __var="$1"
+    local prompt="$2"
+    read -r -s -p "$(vm_prompt "$prompt")" "$__var"
+    echo
+}
+
+vm_read_char() {
+    local __var="$1"
+    local prompt="$2"
+    read -r -n 1 -p "$(vm_prompt "$prompt")" "$__var"
+    echo
+}
+
+vm_pause() {
+    local prompt="$1"
+    read -r -p "$(vm_prompt "$prompt")"
+}
+
 vm_display_header() {
     clear
     print_jishnu_logo
@@ -311,7 +336,7 @@ vm_check_image_lock() {
         if [ -n "$pid" ]; then
             vm_print_status INFO "Process ID using the image: $pid"
             if ps -p "$pid" -o cmd= | grep -q "$vm_name"; then
-                read -p "$(vm_prompt "Kill existing process and restart? (y/N): ")" kill_choice
+                vm_read kill_choice "Kill existing process and restart? (y/N): "
                 if [[ "$kill_choice" =~ ^[Yy]$ ]]; then
                     kill "$pid" 2>/dev/null
                     sleep 2
@@ -328,7 +353,7 @@ vm_check_image_lock() {
     if [ -f "$lock_file" ]; then
         vm_print_status WARN "Lock file found: $lock_file"
         if [[ $(find "$lock_file" -mmin +5 2>/dev/null) ]]; then
-            read -p "$(vm_prompt "Remove stale lock file? (y/N): ")" remove_lock
+            vm_read remove_lock "Remove stale lock file? (y/N): "
             if [[ "$remove_lock" =~ ^[Yy]$ ]]; then
                 rm -f "$lock_file"
                 vm_print_status SUCCESS "Removed stale lock file"
@@ -441,7 +466,7 @@ vm_create_new() {
         ((i++))
     done
     while true; do
-        read -p "$(vm_prompt "Enter your choice (1-${#VM_OS_OPTIONS[@]}): ")" choice
+        vm_read choice "Enter your choice (1-${#VM_OS_OPTIONS[@]}): "
         if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#VM_OS_OPTIONS[@]} ]; then
             local os="${os_options[$choice]}"
             IFS='|' read -r OS_TYPE CODENAME IMG_URL DEFAULT_HOSTNAME DEFAULT_USERNAME DEFAULT_PASSWORD <<< "${VM_OS_OPTIONS[$os]}"
@@ -450,7 +475,7 @@ vm_create_new() {
         vm_print_status ERROR "Invalid selection"
     done
     while true; do
-        read -p "$(vm_prompt "VM name (default: $DEFAULT_HOSTNAME): ")" VM_NAME
+        vm_read VM_NAME "VM name (default: $DEFAULT_HOSTNAME): "
         VM_NAME="${VM_NAME:-$DEFAULT_HOSTNAME}"
         if vm_validate_input "name" "$VM_NAME"; then
             if [[ -f "$VM_DIR/$VM_NAME.conf" ]]; then
@@ -461,21 +486,21 @@ vm_create_new() {
         fi
     done
     while true; do
-        read -p "$(vm_prompt "Hostname (default: $VM_NAME): ")" HOSTNAME
+        vm_read HOSTNAME "Hostname (default: $VM_NAME): "
         HOSTNAME="${HOSTNAME:-$VM_NAME}"
         if vm_validate_input "name" "$HOSTNAME"; then
             break
         fi
     done
     while true; do
-        read -p "$(vm_prompt "Username (default: $DEFAULT_USERNAME): ")" USERNAME
+        vm_read USERNAME "Username (default: $DEFAULT_USERNAME): "
         USERNAME="${USERNAME:-$DEFAULT_USERNAME}"
         if vm_validate_input "username" "$USERNAME"; then
             break
         fi
     done
     while true; do
-        read -s -p "$(vm_prompt "Password (default: $DEFAULT_PASSWORD): ")" PASSWORD
+        vm_read_secret PASSWORD "Password (default: $DEFAULT_PASSWORD): "
         PASSWORD="${PASSWORD:-$DEFAULT_PASSWORD}"
         echo
         if [ -n "$PASSWORD" ]; then
@@ -484,28 +509,28 @@ vm_create_new() {
         vm_print_status ERROR "Password cannot be empty"
     done
     while true; do
-        read -p "$(vm_prompt "Disk size (default: 20G): ")" DISK_SIZE
+        vm_read DISK_SIZE "Disk size (default: 20G): "
         DISK_SIZE="${DISK_SIZE:-20G}"
         if vm_validate_input "size" "$DISK_SIZE"; then
             break
         fi
     done
     while true; do
-        read -p "$(vm_prompt "Memory in MB (default: 2048): ")" MEMORY
+        vm_read MEMORY "Memory in MB (default: 2048): "
         MEMORY="${MEMORY:-2048}"
         if vm_validate_input "number" "$MEMORY"; then
             break
         fi
     done
     while true; do
-        read -p "$(vm_prompt "Number of CPUs (default: 2): ")" CPUS
+        vm_read CPUS "Number of CPUs (default: 2): "
         CPUS="${CPUS:-2}"
         if vm_validate_input "number" "$CPUS"; then
             break
         fi
     done
     while true; do
-        read -p "$(vm_prompt "SSH Port (default: 2222): ")" SSH_PORT
+        vm_read SSH_PORT "SSH Port (default: 2222): "
         SSH_PORT="${SSH_PORT:-2222}"
         if vm_validate_input "port" "$SSH_PORT"; then
             if ss -tln 2>/dev/null | grep -q ":$SSH_PORT "; then
@@ -516,7 +541,7 @@ vm_create_new() {
         fi
     done
     while true; do
-        read -p "$(vm_prompt "Enable GUI mode? (y/n, default: n): ")" gui_input
+        vm_read gui_input "Enable GUI mode? (y/n, default: n): "
         gui_input="${gui_input:-n}"
         if [[ "$gui_input" =~ ^[Yy]$ ]]; then
             GUI_MODE=true
@@ -528,7 +553,7 @@ vm_create_new() {
             vm_print_status ERROR "Please answer y or n"
         fi
     done
-    read -p "$(vm_prompt "Additional port forwards (e.g., 8080:80, Enter for none): ")" PORT_FORWARDS
+    vm_read PORT_FORWARDS "Additional port forwards (e.g., 8080:80, Enter for none): "
     IMG_FILE="$VM_DIR/$VM_NAME.img"
     SEED_FILE="$VM_DIR/$VM_NAME-seed.iso"
     CREATED="$(date)"
@@ -547,7 +572,7 @@ vm_start() {
     if vm_load_config "$vm_name"; then
         if ! vm_check_image_lock "$IMG_FILE" "$vm_name"; then
             vm_print_status ERROR "Image locked by another process"
-            read -p "$(vm_prompt "Force kill QEMU using this image? (y/N): ")" force_kill
+            vm_read force_kill "Force kill QEMU using this image? (y/N): "
             if [[ "$force_kill" =~ ^[Yy]$ ]]; then
                 pkill -f "qemu-system.*$IMG_FILE" 2>/dev/null
                 sleep 2
@@ -559,7 +584,7 @@ vm_start() {
         fi
         if vm_is_running "$vm_name"; then
             vm_print_status WARN "VM '$vm_name' already running"
-            read -p "$(vm_prompt "Stop and restart? (y/N): ")" restart_choice
+            vm_read restart_choice "Stop and restart? (y/N): "
             if [[ "$restart_choice" =~ ^[Yy]$ ]]; then
                 vm_stop "$vm_name"
                 sleep 2
@@ -649,8 +674,7 @@ vm_stop() {
 vm_delete() {
     local vm_name="$1"
     vm_print_status WARN "This will delete VM '$vm_name' and all data"
-    read -p "$(vm_prompt "Are you sure? (y/N): ")" -n 1 -r
-    echo
+    vm_read_char REPLY "Are you sure? (y/N): "
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         if vm_load_config "$vm_name"; then
             if vm_is_running "$vm_name"; then
@@ -694,7 +718,7 @@ vm_show_info() {
             echo "Status: Stopped"
         fi
         echo
-        read -p "$(vm_prompt "Press Enter to continue...")"
+        vm_pause "Press Enter to continue..."
     fi
 }
 
@@ -713,11 +737,11 @@ vm_edit_config() {
             echo "8) CPU Count"
             echo "9) Disk Size"
             echo "0) Back"
-            read -p "$(vm_prompt "Enter your choice: ")" edit_choice
+            vm_read edit_choice "Enter your choice: "
             case $edit_choice in
                 1)
                     while true; do
-                        read -p "$(vm_prompt "New hostname (current: $HOSTNAME): ")" new_hostname
+                        vm_read new_hostname "New hostname (current: $HOSTNAME): "
                         new_hostname="${new_hostname:-$HOSTNAME}"
                         if vm_validate_input "name" "$new_hostname"; then
                             HOSTNAME="$new_hostname"
@@ -727,7 +751,7 @@ vm_edit_config() {
                     ;;
                 2)
                     while true; do
-                        read -p "$(vm_prompt "New username (current: $USERNAME): ")" new_username
+                        vm_read new_username "New username (current: $USERNAME): "
                         new_username="${new_username:-$USERNAME}"
                         if vm_validate_input "username" "$new_username"; then
                             USERNAME="$new_username"
@@ -737,9 +761,8 @@ vm_edit_config() {
                     ;;
                 3)
                     while true; do
-                        read -s -p "$(vm_prompt "New password: ")" new_password
+                        vm_read_secret new_password "New password: "
                         new_password="${new_password:-$PASSWORD}"
-                        echo
                         if [ -n "$new_password" ]; then
                             PASSWORD="$new_password"
                             break
@@ -749,7 +772,7 @@ vm_edit_config() {
                     ;;
                 4)
                     while true; do
-                        read -p "$(vm_prompt "New SSH port (current: $SSH_PORT): ")" new_ssh_port
+                        vm_read new_ssh_port "New SSH port (current: $SSH_PORT): "
                         new_ssh_port="${new_ssh_port:-$SSH_PORT}"
                         if vm_validate_input "port" "$new_ssh_port"; then
                             if [ "$new_ssh_port" != "$SSH_PORT" ] && ss -tln 2>/dev/null | grep -q ":$new_ssh_port "; then
@@ -763,7 +786,7 @@ vm_edit_config() {
                     ;;
                 5)
                     while true; do
-                        read -p "$(vm_prompt "Enable GUI mode? (y/n, current: $GUI_MODE): ")" gui_input
+                        vm_read gui_input "Enable GUI mode? (y/n, current: $GUI_MODE): "
                         if [[ "$gui_input" =~ ^[Yy]$ ]]; then
                             GUI_MODE=true
                             break
@@ -778,12 +801,12 @@ vm_edit_config() {
                     done
                     ;;
                 6)
-                    read -p "$(vm_prompt "Port forwards (current: ${PORT_FORWARDS:-None}): ")" new_port_forwards
+                    vm_read new_port_forwards "Port forwards (current: ${PORT_FORWARDS:-None}): "
                     PORT_FORWARDS="${new_port_forwards:-$PORT_FORWARDS}"
                     ;;
                 7)
                     while true; do
-                        read -p "$(vm_prompt "New memory in MB (current: $MEMORY): ")" new_memory
+                        vm_read new_memory "New memory in MB (current: $MEMORY): "
                         new_memory="${new_memory:-$MEMORY}"
                         if vm_validate_input "number" "$new_memory"; then
                             MEMORY="$new_memory"
@@ -793,7 +816,7 @@ vm_edit_config() {
                     ;;
                 8)
                     while true; do
-                        read -p "$(vm_prompt "New CPU count (current: $CPUS): ")" new_cpus
+                        vm_read new_cpus "New CPU count (current: $CPUS): "
                         new_cpus="${new_cpus:-$CPUS}"
                         if vm_validate_input "number" "$new_cpus"; then
                             CPUS="$new_cpus"
@@ -803,7 +826,7 @@ vm_edit_config() {
                     ;;
                 9)
                     while true; do
-                        read -p "$(vm_prompt "New disk size (current: $DISK_SIZE): ")" new_disk_size
+                        vm_read new_disk_size "New disk size (current: $DISK_SIZE): "
                         new_disk_size="${new_disk_size:-$DISK_SIZE}"
                         if vm_validate_input "size" "$new_disk_size"; then
                             DISK_SIZE="$new_disk_size"
@@ -823,7 +846,7 @@ vm_edit_config() {
                 vm_setup_image || return 1
             fi
             vm_save_config
-            read -p "$(vm_prompt "Continue editing? (y/N): ")" continue_editing
+            vm_read continue_editing "Continue editing? (y/N): "
             if [[ ! "$continue_editing" =~ ^[Yy]$ ]]; then
                 break
             fi
@@ -840,7 +863,7 @@ vm_resize_disk() {
         fi
         vm_print_status INFO "Current disk size: $DISK_SIZE"
         while true; do
-            read -p "$(vm_prompt "New disk size (e.g., 50G): ")" new_disk_size
+            vm_read new_disk_size "New disk size (e.g., 50G): "
             if vm_validate_input "size" "$new_disk_size"; then
                 if [[ "$new_disk_size" == "$DISK_SIZE" ]]; then
                     vm_print_status INFO "New size is the same"
@@ -858,7 +881,7 @@ vm_resize_disk() {
                 fi
                 if [[ $new_size_num -lt $current_size_num ]]; then
                     vm_print_status WARN "Shrinking disk may cause data loss"
-                    read -p "$(vm_prompt "Continue? (y/N): ")" confirm_shrink
+                    vm_read confirm_shrink "Continue? (y/N): "
                     if [[ ! "$confirm_shrink" =~ ^[Yy]$ ]]; then
                         vm_print_status INFO "Resize cancelled"
                         return 0
@@ -899,7 +922,7 @@ vm_performance() {
             echo "CPUs: $CPUS"
             echo "Disk: $DISK_SIZE"
         fi
-        read -p "$(vm_prompt "Press Enter to continue...")"
+        vm_pause "Press Enter to continue..."
     fi
 }
 
@@ -912,7 +935,7 @@ vm_fix_issues() {
         echo "3) Recreate configuration"
         echo "4) Kill stuck processes"
         echo "0) Back"
-        read -p "$(vm_prompt "Enter your choice: ")" fix_choice
+        vm_read fix_choice "Enter your choice: "
         case $fix_choice in
             1)
                 rm -f "${IMG_FILE}.lock" 2>/dev/null
@@ -942,7 +965,7 @@ vm_fix_issues() {
 hyperdock_vm_manager() {
     trap vm_cleanup EXIT
     if ! vm_check_dependencies; then
-        read -p "$(vm_prompt "Press Enter to return...")"
+        vm_pause "Press Enter to return..."
         return
     fi
     VM_DIR="${VM_DIR:-$HOME/vms}"
@@ -985,21 +1008,21 @@ hyperdock_vm_manager() {
         fi
         echo "0) Exit"
         echo
-        read -p "$(vm_prompt "Enter your choice: ")" choice
+        vm_read choice "Enter your choice: "
         case $choice in
             1) vm_create_new ;;
-            2) if [ $vm_count -gt 0 ]; then read -p "$(vm_prompt "VM number to start: ")" vm_num; vm_start "${vms[$((vm_num-1))]}"; fi ;;
-            3) if [ $vm_count -gt 0 ]; then read -p "$(vm_prompt "VM number to stop: ")" vm_num; vm_stop "${vms[$((vm_num-1))]}"; fi ;;
-            4) if [ $vm_count -gt 0 ]; then read -p "$(vm_prompt "VM number to show info: ")" vm_num; vm_show_info "${vms[$((vm_num-1))]}"; fi ;;
-            5) if [ $vm_count -gt 0 ]; then read -p "$(vm_prompt "VM number to edit: ")" vm_num; vm_edit_config "${vms[$((vm_num-1))]}"; fi ;;
-            6) if [ $vm_count -gt 0 ]; then read -p "$(vm_prompt "VM number to delete: ")" vm_num; vm_delete "${vms[$((vm_num-1))]}"; fi ;;
-            7) if [ $vm_count -gt 0 ]; then read -p "$(vm_prompt "VM number to resize disk: ")" vm_num; vm_resize_disk "${vms[$((vm_num-1))]}"; fi ;;
-            8) if [ $vm_count -gt 0 ]; then read -p "$(vm_prompt "VM number to show performance: ")" vm_num; vm_performance "${vms[$((vm_num-1))]}"; fi ;;
-            9) if [ $vm_count -gt 0 ]; then read -p "$(vm_prompt "VM number to fix issues: ")" vm_num; vm_fix_issues "${vms[$((vm_num-1))]}"; fi ;;
+            2) if [ $vm_count -gt 0 ]; then vm_read vm_num "VM number to start: "; vm_start "${vms[$((vm_num-1))]}"; fi ;;
+            3) if [ $vm_count -gt 0 ]; then vm_read vm_num "VM number to stop: "; vm_stop "${vms[$((vm_num-1))]}"; fi ;;
+            4) if [ $vm_count -gt 0 ]; then vm_read vm_num "VM number to show info: "; vm_show_info "${vms[$((vm_num-1))]}"; fi ;;
+            5) if [ $vm_count -gt 0 ]; then vm_read vm_num "VM number to edit: "; vm_edit_config "${vms[$((vm_num-1))]}"; fi ;;
+            6) if [ $vm_count -gt 0 ]; then vm_read vm_num "VM number to delete: "; vm_delete "${vms[$((vm_num-1))]}"; fi ;;
+            7) if [ $vm_count -gt 0 ]; then vm_read vm_num "VM number to resize disk: "; vm_resize_disk "${vms[$((vm_num-1))]}"; fi ;;
+            8) if [ $vm_count -gt 0 ]; then vm_read vm_num "VM number to show performance: "; vm_performance "${vms[$((vm_num-1))]}"; fi ;;
+            9) if [ $vm_count -gt 0 ]; then vm_read vm_num "VM number to fix issues: "; vm_fix_issues "${vms[$((vm_num-1))]}"; fi ;;
             0) break ;;
             *) vm_print_status ERROR "Invalid option" ;;
         esac
-        read -p "$(vm_prompt "Press Enter to continue...")"
+        vm_pause "Press Enter to continue..."
     done
 }
 
