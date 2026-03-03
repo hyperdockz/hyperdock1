@@ -2,7 +2,7 @@
 
 # ==============================================================================
 # HYPER DOCK - Advanced Virtual Machine Deployment System
-# Version: 2.1 (Google IDX Support Added)
+# Version: 2.2 (VPMaker Logic Integrated + Cloud-Init Support)
 # ==============================================================================
 
 # --- Color Definitions ---
@@ -16,19 +16,18 @@ BLUE="\033[0;34m"
 MAGENTA="\033[0;35m"
 CYAN="\033[0;36m"
 WHITE="\033[0;37m"
-BG_BLUE="\033[44m"
-BG_WHITE="\033[47m"
 
 # --- Global Variables ---
-HYPER_VERSION="2.1.0"
+HYPER_VERSION="2.2.0"
 CONFIG_DIR="$HOME/.hyper_dock"
+VM_DIR="$HOME/hyper_dock_vms"
 LOG_FILE="$CONFIG_DIR/hyper.log"
 
 # --- Modern UI Functions ---
 
-# Initialize environment
 init_environment() {
     mkdir -p "$CONFIG_DIR"
+    mkdir -p "$VM_DIR"
     clear
 }
 
@@ -37,7 +36,6 @@ type_text() {
     local text="$1"
     local delay=0.005
     if [[ "$2" != "" ]]; then delay="$2"; fi
-    
     for ((i=0; i<${#text}; i++)); do
         printf "${text:$i:1}"
         sleep $delay
@@ -47,60 +45,36 @@ type_text() {
 # Modern progress bar
 show_progress() {
     local duration=${1}
-    local steps=50
-    local increment=$((duration * 1000 / steps))
-    
+    local steps=40
     printf "\n"
     for ((i=0; i<=steps; i++)); do
-        local width=$((i * 2))
         local percentage=$((i * 100 / steps))
         printf "\r${CYAN}[${RESET}"
         for ((j=0; j<i; j++)); do printf "${GREEN}█${RESET}"; done
         for ((k=i; k<steps; k++)); do printf "${DIM}─${RESET}"; done
         printf "${CYAN}]${RESET} ${BOLD}${WHITE}%3d%%${RESET}" $percentage
-        sleep 0.02
+        sleep $(echo "scale=3; $duration / $steps" | bc)
     done
     printf "\n\n"
 }
 
-# Spinner animation
-show_spinner() {
-    local pid=$1
-    local delay=0.05
-    local spinstr='|/-\'
-    local i=0
-    tput civis
-    while [ -d /proc/$pid ]; do
-        i=$(( (i+1) %4 ))
-        printf "\r${CYAN}[${spinstr:$i:1}]${RESET} Processing..."
-        sleep $delay
-    done
-    tput cnorm
-    printf "\r${GREEN}[✓]${RESET} Done.          \n"
-}
-
-# Draw a modern box
 draw_box() {
     local text="$1"
     local width=60
     local padding=$(( (width - ${#text}) / 2 ))
-    
     printf "${CYAN}┌${RESET}"
     for ((i=0; i<width; i++)); do printf "${CYAN}─${RESET}"; done
     printf "${CYAN}┐${RESET}\n"
-    
     printf "${CYAN}│${RESET}"
     for ((i=0; i<padding; i++)); do printf " "; done
     printf "${BOLD}${WHITE}%s${RESET}" "$text"
     for ((i=padding+${#text}; i<width; i++)); do printf " "; done
     printf "${CYAN}│${RESET}\n"
-    
     printf "${CYAN}└${RESET}"
     for ((i=0; i<width; i++)); do printf "${CYAN}─${RESET}"; done
     printf "${CYAN}┘${RESET}\n"
 }
 
-# Display Logo
 show_logo() {
     clear
     echo -e "${CYAN}"
@@ -111,12 +85,6 @@ show_logo() {
     ██╔══██║██║   ██║██╔══██╗██╔══╝  ██╔══██╗██║╚██╔╝██║██║   ██║██║  ██║██║  ██║██╔══╝  
     ██║  ██║╚██████╔╝██████╔╝███████╗██║  ██║██║ ╚═╝ ██║╚██████╔╝██████╔╝██████╔╝███████╗
     ╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝ ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝
-    ██╗   ██╗ ██████╗ ██╗   ██╗    ██████╗  ██████╗ ██████╗     ██████╗ ██████╗  ██████╗ ██╗  ██╗██╗   ██╗
-    ██║   ██║██╔═══██╗██║   ██║    ██╔══██╗██╔═══██╗██╔══██╗    ██╔══██╗██╔══██╗██╔═══██╗╚██╗██╔╝╚██╗ ██╔╝
-    ██║   ██║██║   ██║██║   ██║    ██████╔╝██║   ██║██║  ██║    ██████╔╝██████╔╝██║   ██║ ╚███╔╝  ╚████╔╝ 
-    ╚██╗ ██╔╝██║   ██║██║   ██║    ██╔═══╝ ██║   ██║██║  ██║    ██╔═══╝ ██╔══██╗██║   ██║ ██╔██╗   ╚██╔╝  
-     ╚████╔╝ ╚██████╔╝╚██████╔╝    ██║     ╚██████╔╝██████╔╝    ██║     ██║  ██║╚██████╔╝██╔╝ ██╗   ██║   
-      ╚═══╝   ╚═════╝  ╚═════╝     ╚═╝      ╚═════╝ ╚═════╝     ╚═╝     ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   
 EOF
     echo -e "${RESET}"
     echo -e "${DIM}                  [ Advanced Virtualization Interface // Version $HYPER_VERSION ]${RESET}"
@@ -129,7 +97,8 @@ EOF
 
 check_dependencies() {
     printf "${YELLOW}Checking system dependencies...${RESET}\n"
-    local deps=("qemu-system-x86_64" "wget" "curl" "virt-install" "genisoimage")
+    # Added genisoimage/cloud-image-utils for cloud-init support (VPMaker logic)
+    local deps=("qemu-system-x86_64" "wget" "curl" "genisoimage" "qemu-utils")
     local missing=()
     
     for cmd in "${deps[@]}"; do
@@ -142,11 +111,11 @@ check_dependencies() {
         printf "${RED}Missing dependencies: ${missing[*]}${RESET}\n"
         printf "${YELLOW}Attempting to install missing packages...${RESET}\n"
         if command -v apt-get &> /dev/null; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-x86 wget curl virtinst genisoimage > /dev/null &
-            show_spinner $!
+            sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-x86 wget curl genisoimage qemu-utils > /dev/null
         elif command -v dnf &> /dev/null; then
-            sudo dnf install -y -q qemu-kvm wget curl virt-install genisoimage > /dev/null &
-            show_spinner $!
+            sudo dnf install -y -q qemu-kvm wget curl genisoimage qemu-img > /dev/null
+        elif command -v yum &> /dev/null; then
+            sudo yum install -y -q qemu-kvm wget curl genisoimage qemu-img > /dev/null
         else
             printf "${RED}Package manager not supported. Please install: ${missing[*]}${RESET}\n"
             exit 1
@@ -159,7 +128,6 @@ check_dependencies() {
 
 declare -A DISTRO_MAP
 
-# Pre-populating 30+ Distros
 load_distros() {
     # Standard Linux
     DISTRO_MAP["1"]="Ubuntu 24.04|https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
@@ -212,10 +180,45 @@ load_distros() {
     DISTRO_MAP["34"]="OpenBSD|https://cdn.openbsd.org/pub/OpenBSD/7.5/amd64/install75.iso"
     DISTRO_MAP["35"]="NetBSD|https://cdn.netbsd.org/pub/NetBSD/NetBSD-10.0/images/NetBSD-10.0-amd64.iso"
 
-    # --- NEW GOOGLE IDX SUPPORT ---
-    # Google IDX environments are Debian-based. We use the official Debian 12 Cloud Image.
+    # Google IDX & Chrome
     DISTRO_MAP["36"]="Google IDX Base (Debian)|https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-nocloud-amd64.qcow2"
     DISTRO_MAP["37"]="Chrome OS Flex|https://dl.google.com/chromeos-flex/recovery/latest/chromeos_15874.0.0_reven_recovery_stable-channel_mp-v2.bin.zip"
+}
+
+# --- VPMaker Logic: Cloud Init Generator ---
+
+generate_cloud_init() {
+    local vm_name=$1
+    local user=$2
+    local pass=$3
+    local cid_dir="$CONFIG_DIR/$vm_name-cidata"
+
+    mkdir -p "$cid_dir"
+
+    # Create meta-data
+    echo "instance-id: $vm_name" > "$cid_dir/meta-data"
+    echo "local-hostname: $vm_name" >> "$cid_dir/meta-data"
+
+    # Create user-data
+    cat << EOF > "$cid_dir/user-data"
+#cloud-config
+users:
+  - default
+  - name: $user
+    lock_passwd: false
+    hashed_passwd: $(openssl passwd -1 "$pass")
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+ssh_pwauth: True
+chpasswd:
+  expire: false
+EOF
+
+    # Generate ISO
+    local iso_path="$VM_DIR/$vm_name-cidata.iso"
+    genisoimage -output "$iso_path" -volid cidata -joliet -rock "$cid_dir/user-data" "$cid_dir/meta-data" > /dev/null 2>&1
+    
+    echo "$iso_path"
 }
 
 # --- Installation Logic ---
@@ -232,77 +235,80 @@ install_distro() {
     IFS='|' read -r name url <<< "$data"
     
     clear
-    draw_box "Installing $name"
+    draw_box "Provisioning $name"
     echo ""
     
-    local img_dir="$HOME/hyper_dock_vms"
-    mkdir -p "$img_dir"
-    local file_name=$(basename "$url" | sed 's/?.*//')
-    local img_path="$img_dir/$file_name"
+    # 1. Ask for Credentials (VPMaker Logic)
+    read -p "$(echo -e "${CYAN}Enter Username for VM [default: root]: ${RESET}")" vm_user
+    vm_user=${vm_user:-root}
     
-    # Special Handling for Fedora 40
+    while true; do
+        read -s -p "$(echo -e "${CYAN}Enter Password: ${RESET}")" vm_pass
+        echo ""
+        read -s -p "$(echo -e "${CYAN}Confirm Password: ${RESET}")" vm_pass2
+        echo ""
+        if [[ "$vm_pass" == "$vm_pass2" && -n "$vm_pass" ]]; then
+            break
+        else
+            echo -e "${RED}Passwords do not match or are empty. Try again.${RESET}"
+        fi
+    done
+    
+    local img_path="$VM_DIR/$(basename "$url" | sed 's/?.*//')"
+    
+    # Special Handling for Fedora 40 (Fix)
     if [[ "$name" == "Fedora 40" ]]; then
         printf "${YELLOW}Applying Fedora 40 specific patches...${RESET}\n"
         url="https://download.fedoraproject.org/pub/fedora/linux/releases/40/Cloud/x86_64/images/Fedora-Cloud-Base-Generic.x86_64-40-1.14.qcow2"
-        file_name="Fedora-Cloud-Base-Generic.x86_64-40-1.14.qcow2"
-        img_path="$img_dir/$file_name"
+        img_path="$VM_DIR/Fedora-Cloud-Base-Generic.x86_64-40-1.14.qcow2"
     fi
 
-    # Special Handling for Google IDX
-    if [[ "$name" == "Google IDX Base (Debian)" ]]; then
-        printf "${YELLOW}Configuring Google IDX Environment...${RESET}\n"
-        # Google IDX is essentially Debian with specific packages. 
-        # Here we pull the base image to ensure compatibility.
-        file_name="google-idx-base.qcow2"
-        img_path="$img_dir/$file_name"
-    fi
-
+    # 2. Download Image
     if [[ -f "$img_path" ]]; then
-        printf "${GREEN}Image already exists at $img_path${RESET}\n"
+        printf "${GREEN}Image already exists. Skipping download.${RESET}\n"
     else
         printf "${CYAN}Downloading $name...${RESET}\n"
         printf "${DIM}Source: $url${RESET}\n\n"
-        
-        # Modern download with progress
         wget --show-progress -q -O "$img_path" "$url"
-        
         if [[ $? -ne 0 ]]; then
-            printf "${RED}Download failed. Check URL or network connection.${RESET}\n"
+            printf "${RED}Download failed.${RESET}\n"
             return 1
         fi
-        printf "\n${GREEN}Download complete!${RESET}\n"
     fi
-    
-    # Spinning up VM
-    printf "\n${YELLOW}Preparing Virtual Machine...${RESET}\n"
+
+    # 3. Generate Cloud Init ISO (VPMaker Logic)
+    printf "\n${YELLOW}Generating Cloud-Init configuration...${RESET}\n"
+    local cid_iso=$(generate_cloud_init "hd-$choice" "$vm_user" "$vm_pass")
+    printf "${GREEN}Cloud-Init ISO generated.${RESET}\n"
+
+    # 4. Launch VM
+    printf "${YELLOW}Launching Virtual Machine...${RESET}\n"
     show_progress 2
-    
-    printf "${CYAN}Launching VM Instance...${RESET}\n"
-    
-    # Check if QEMU is available
-    if command -v qemu-system-x86_64 &> /dev/null; then
-        # Run in background
-        qemu-system-x86_64 \
-            -m 2048 \
-            -smp 2 \
-            -drive file="$img_path",format=qcow2 \
-            -enable-kvm \
-            -cpu host \
-            -vga qxl \
-            -net nic -net user,hostfwd=tcp::2222-:22 \
-            -daemonize \
-            -name "HyperDock-$name"
-            
-        printf "${GREEN}VM Started in background.${RESET}\n"
-        printf "${WHITE}Connect via SSH: ${CYAN}ssh user@localhost -p 2222${RESET}\n"
-        
-        if [[ "$name" == "Google IDX Base (Debian)" ]]; then
-            printf "${MAGENTA}>> This is the base environment for Google IDX.${RESET}\n"
-            printf "${MAGENTA}>> Install your development tools (Node, Go, Python) to match IDX specs.${RESET}\n"
-        fi
-    else
-        printf "${RED}QEMU not found. Cannot launch VM.${RESET}\n"
+
+    # Check if KVM is available
+    local accel="-accel tcg"
+    if [[ -e /dev/kvm ]]; then
+        accel="-enable-kvm"
     fi
+
+    qemu-system-x86_64 \
+        -m 2048 \
+        -smp 2 \
+        -cpu host \
+        $accel \
+        -drive file="$img_path",format=qcow2,if=virtio \
+        -cdrom "$cid_iso" \
+        -netdev user,id=net0,hostfwd=tcp::2222-:22 \
+        -device virtio-net-pci,netdev=net0 \
+        -nographic \
+        -daemonize \
+        -name "HyperDock-$name"
+
+    printf "${GREEN}VM Started Successfully!${RESET}\n"
+    printf "${WHITE}--------------------------------------------------${RESET}\n"
+    printf "${WHITE}Connect via SSH: ${CYAN}ssh $vm_user@localhost -p 2222${RESET}\n"
+    printf "${WHITE}Password: ${DIM}(The password you set above)${RESET}\n"
+    printf "${WHITE}--------------------------------------------------${RESET}\n"
 }
 
 # --- Main Menu ---
