@@ -1,5 +1,11 @@
 #!/bin/bash
- 
+
+if [ -z "$HYPERDOCK_NOCRLF" ] && grep -q $'\r' "$0" 2>/dev/null; then
+    export HYPERDOCK_NOCRLF=1
+    tr -d '\r' < "$0" | bash
+    exit $?
+fi
+
  # COLORS - BLUE THEME
  R="\e[1;34m"  # Bright Blue
  G="\e[1;36m"  # Cyan
@@ -223,15 +229,16 @@
      echo -e "${R}║${Y}                    MAIN OPTIONS                      ${R}║${N}"
      echo -e "${R}╚══════════════════════════════════════════════════════════╝${N}\n"
      
-       print_option "1" "🚀 GitHub VPS Maker" "$R"
-       print_option "2" "🔧 IDX Tool Setup" "$R"
-       print_option "3" "⚡ IDX VPS Maker" "$R"
-       print_option "4" "🌐 Real VPS (Any + KVM)" "$R"
-       print_option "5" "❌ Exit" "$R"
+      print_option "1" "🚀 GitHub VPS Maker" "$R"
+      print_option "2" "🔧 IDX Tool Setup" "$R"
+      print_option "3" "⚡ IDX VPS Maker" "$R"
+      print_option "4" "🌐 Real VPS (Any + KVM)" "$R"
+      print_option "5" "❌ Exit" "$R"
+      print_option "6" "🔥 Google IDX Firebase Studio" "$R"
  
      
      print_divider
-     echo -ne "${R}▶▶${W} Select Option [${R}1-5${W}] : ${Y}"
+    echo -ne "${R}▶▶${W} Select Option [${R}1-6${W}] : ${Y}"
      read -p "" op
      echo -ne "${N}"
      
@@ -317,7 +324,7 @@
              echo -e "${C}📝 Creating dev.nix configuration...${N}"
              echo -e "${Y}──────────────────────────────────────────────────────${N}"
              
-             cat <<EOF > dev.nix
+            cat <<'EOF' > dev.nix
  { pkgs, ... }: {
    channel = "stable-24.05";
  
@@ -394,7 +401,7 @@
          echo -e "\n${R}▶▶${W} Executing IDX VPS Maker script...${N}"
          echo -e "${Y}──────────────────────────────────────────────────────${N}"
          
-         bash <(curl -s `https://raw.githubusercontent.com/jishnu-limited/app-build-journey/refs/heads/main/vpmakerkvmidx`) 
+        bash <(curl -s "https://raw.githubusercontent.com/jishnu-limited/app-build-journey/refs/heads/main/vpmakerkvmidx") 
          
          echo -e "\n${R}══════════════════════════════════════════════════════════${N}"
          echo -e "${R}▶▶${W} IDX VPS Maker execution completed.${N}"
@@ -424,13 +431,13 @@
  
          echo -e "${Y}🔍 Running disk & system preparation (dd.sh)...${N}"
          echo -e "${Y}──────────────────────────────────────────────────────${N}"
-         bash <(curl -s `https://raw.githubusercontent.com/nobita329/The-Coding-Hub/refs/heads/main/srv/vm/dd.sh`) 
+        bash <(curl -s "https://raw.githubusercontent.com/nobita329/The-Coding-Hub/refs/heads/main/srv/vm/dd.sh") 
  
          echo -e "\n${G}✅ Disk preparation completed.${N}\n"
  
          echo -e "${Y}🚀 Launching Real VPS installer (vm2.sh)...${N}"
          echo -e "${Y}──────────────────────────────────────────────────────${N}"
-         bash <(curl -s `https://raw.githubusercontent.com/JishnuTheGamer/Vps/refs/heads/main/n`) 
+        bash <(curl -s "https://raw.githubusercontent.com/JishnuTheGamer/Vps/refs/heads/main/n") 
  
          echo -e "\n${R}══════════════════════════════════════════════════════════${N}"
          echo -e "${R}▶▶${W} Real VPS process finished.${N}"
@@ -459,11 +466,85 @@
          sleep 2
          exit 0
          ;;
+    
+    6)
+        clear
+        print_jishnu_logo
+        print_status "🔥 GOOGLE IDX FIREBASE STUDIO" "$R"
+        print_divider
+        echo
+        
+        echo -e "${R}╔══════════════════════════════════════════════════════════╗${N}"
+        echo -e "${R}║${W}          GOOGLE IDX FIREBASE STUDIO SETUP           ${R}║${N}"
+        echo -e "${R}╚══════════════════════════════════════════════════════════╝${N}\n"
+        
+        cd
+        cd vps123
+        
+        if [ ! -d ".idx" ]; then
+            echo -e "${G}📁 Creating .idx directory...${N}"
+            mkdir .idx
+        fi
+        
+        cd .idx
+        
+        echo -e "${C}📝 Creating firebase.nix configuration...${N}"
+        echo -e "${Y}──────────────────────────────────────────────────────${N}"
+        
+        cat <<'EOF' > firebase.nix
+{ pkgs, ... }: {
+  channel = "stable-24.05";
+
+  packages = with pkgs; [
+    nodejs_20
+    nodePackages.firebase-tools
+    git
+    openssh
+    unzip
+    jq
+  ];
+
+  env = {
+    EDITOR = "nano";
+  };
+
+  idx = {
+    extensions = [
+      "Firebase.firebase-vscode"
+      "Dart-Code.flutter"
+      "Dart-Code.dart-code"
+    ];
+
+    workspace = {
+      onCreate = { };
+      onStart = { };
+    };
+
+    previews = {
+      enable = false;
+    };
+  };
+}
+EOF
+        
+        echo -e "${Y}──────────────────────────────────────────────────────${N}"
+        echo -e "\n${G}✅ GOOGLE IDX FIREBASE STUDIO READY!${N}"
+        echo -e "${R}┌──────────────────────────────────────────────────────┐${N}"
+        echo -e "${R}│${W} ${G}Status${W}   : ${Y}Ready to use${W}                        ${R}│${N}"
+        echo -e "${R}│${W} ${G}Location${W} : ${Y}~/vps123/.idx/firebase.nix${W}          ${R}│${N}"
+        echo -e "${R}│${W} ${G}Tool${W}     : ${Y}Firebase Studio for IDX${W}             ${R}│${N}"
+        echo -e "${R}│${W} ${G}Version${W}  : ${Y}Stable 24.05${W}                        ${R}│${N}"
+        echo -e "${R}└──────────────────────────────────────────────────────┘${N}"
+        
+        echo -e "\n${R}══════════════════════════════════════════════════════════${N}"
+        echo -ne "${R}▶▶${W} Press Enter to return to main menu...${N}"
+        read -p ""
+        ;;
      
      *)
          echo -e "\n${R}╔══════════════════════════════════════════════════════════╗${N}"
          echo -e "${R}║${W}                ❌ INVALID OPTION!                     ${R}║${N}"
-         echo -e "${R}║${Y}         Please choose between 1-4 only                ${R}║${N}"
+         echo -e "${R}║${Y}         Please choose between 1-6 only                ${R}║${N}"
          echo -e "${R}╚══════════════════════════════════════════════════════════╝${N}"
          sleep 2
          ;;
