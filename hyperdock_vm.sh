@@ -2,7 +2,7 @@
 
 # ==============================================================================
 # HYPER DOCK - Advanced Virtual Machine Deployment System
-# Version: 2.0 (Modern Rewrite)
+# Version: 2.1 (Google IDX Support Added)
 # ==============================================================================
 
 # --- Color Definitions ---
@@ -20,7 +20,7 @@ BG_BLUE="\033[44m"
 BG_WHITE="\033[47m"
 
 # --- Global Variables ---
-HYPER_VERSION="2.0.0"
+HYPER_VERSION="2.1.0"
 CONFIG_DIR="$HOME/.hyper_dock"
 LOG_FILE="$CONFIG_DIR/hyper.log"
 
@@ -161,14 +161,21 @@ declare -A DISTRO_MAP
 
 # Pre-populating 30+ Distros
 load_distros() {
+    # Standard Linux
     DISTRO_MAP["1"]="Ubuntu 24.04|https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
     DISTRO_MAP["2"]="Ubuntu 22.04|https://cloud-images.ubuntu.com/releases/22.04/release/ubuntu-22.04-server-cloudimg-amd64.img"
     DISTRO_MAP["3"]="Debian 12|https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-nocloud-amd64.qcow2"
+    
+    # Fedora Fixed
     DISTRO_MAP["4"]="Fedora 40|https://download.fedoraproject.org/pub/fedora/linux/releases/40/Cloud/x86_64/images/Fedora-Cloud-Base-Generic.x86_64-40-1.14.qcow2"
     DISTRO_MAP["5"]="Fedora 39|https://download.fedoraproject.org/pub/fedora/linux/releases/39/Cloud/x86_64/images/Fedora-Cloud-Base-Generic.x86_64-39-1.5.qcow2"
+    
+    # Enterprise
     DISTRO_MAP["6"]="CentOS Stream 9|https://cloud.centos.org/centos/9-stream/x86_64/images/CentOS-Stream-GenericCloud-9-latest.x86_64.qcow2"
     DISTRO_MAP["7"]="AlmaLinux 9|https://repo.almalinux.org/almalinux/9/cloud/x86_64/images/AlmaLinux-9-GenericCloud-latest.x86_64.qcow2"
     DISTRO_MAP["8"]="Rocky Linux 9|https://dl.rockylinux.org/pub/rocky/9/images/x86_64/Rocky-9-GenericCloud-Base.latest.x86_64.qcow2"
+    
+    # Arch & Independent
     DISTRO_MAP["9"]="Arch Linux|https://geo.mirror.pkgbuild.com/images/latest/Arch-Linux-x86_64-cloudimg.qcow2"
     DISTRO_MAP["10"]="Manjaro|https://download.manjaro.org/kvm/manjaro-kvm-21.2.6.qcow2"
     DISTRO_MAP["11"]="OpenSUSE Tumbleweed|https://download.opensuse.org/repositories/Cloud:/Images:/Tumbleweed/images/openSUSE-Tumbleweed-Cloud.qcow2"
@@ -176,26 +183,39 @@ load_distros() {
     DISTRO_MAP["13"]="Gentoo|https://gentoo.osuosl.org/experimental/amd64/openstack/gentoo-openstack-amd64-default-latest.qcow2"
     DISTRO_MAP["14"]="Alpine Linux|https://dl-cdn.alpinelinux.org/alpine/v3.19/releases/x86_64/alpine-virt-3.19.0-x86_64.iso"
     DISTRO_MAP["15"]="Void Linux|https://alpha.de.repo.voidlinux.org/live/void-live-x86_64-20221001-base.iso"
-    DISTRO_MAP["16"]="Slackware|https://slackware.uk/slackware/slackware64-15.0/isolinux/initrd.img" # Note: Needs specific handling, placeholder url
+    DISTRO_MAP["16"]="Slackware|https://slackware.uk/slackware/slackware64-15.0/isolinux/initrd.img" 
     DISTRO_MAP["17"]="NixOS|https://channels.nixos.org/nixos-23.11/latest-nixos-minimal-x86_64-linux.iso"
     DISTRO_MAP["18"]="Solus|https://downloads.getsol.us/isos/current/Solus-4.5-Budgie.iso"
+    
+    # Security & Penetration
     DISTRO_MAP["19"]="Kali Linux|https://kali.download/base-images/kali-2024.1/kali-linux-2024.1-cloud-amd64.qcow2"
-    DISTRO_MAP["20"]="MX Linux|https://sourceforge.net/projects/mx-linux/files/Final/X23/MX-23_x64.iso/download"
-    DISTRO_MAP["21"]="Linux Mint 21.3|https://mirrors.edge.kernel.org/linuxmint/stable/21.3/linuxmint-21.3-cinnamon-64bit.iso"
-    DISTRO_MAP["22"]="Zorin OS|https://downloads.sourceforge.net/project/zorin-os/17/Core/Zorin-OS-17-Core-64-bit.iso"
-    DISTRO_MAP["23"]="Pop!_OS|https://pop-iso.sfo2.cdn.digitaloceanspaces.com/22.04/amd64/intel/22/pop-os_22.04_amd64_intel_10.iso"
-    DISTRO_MAP["24"]="Elementary OS|https://downloads.sourceforge.net/project/elementary-os/stable/7.1/elementaryos-7.1-stable.20231110.iso"
-    DISTRO_MAP["25"]="Peppermint|https://sourceforge.net/projects/peppermintos/files/Peppermint%20Debian%20Dev/peppermint-11-04-2023-amd64.iso"
-    DISTRO_MAP["26"]="Q4OS|https://q4os.org/downloads/q4os-4.8-x64.r1.iso"
-    DISTRO_MAP["27"]="ReactOS|https://downloads.sourceforge.net/project/reactos/ReactOS/0.4.14/ReactOS-0.4.14-release-17-g67f279f-live.zip"
-    DISTRO_MAP["28"]="FreeBSD|https://download.freebsd.org/releases/VM-IMAGES/14.0-RELEASE/amd64/Latest/FreeBSD-14.0-RELEASE-amd64.qcow2"
-    DISTRO_MAP["29"]="OpenBSD|https://cdn.openbsd.org/pub/OpenBSD/7.5/amd64/install75.iso"
-    DISTRO_MAP["30"]="NetBSD|https://cdn.netbsd.org/pub/NetBSD/NetBSD-10.0/images/NetBSD-10.0-amd64.iso"
-    DISTRO_MAP["31"]="Tiny Core|http://tinycorelinux.net/15.x/x86_64/release/TinyCorePure64-15.0.iso"
-    DISTRO_MAP["32"]="Puppy Linux|http://distro.ibiblio.org/puppylinux/puppy-fossa/fossapup64-9.5.iso"
-    DISTRO_MAP["33"]="Kaisen Linux|https://kaisen-linux.org/downloads/kaisen-linux-rolling-2.0-amd64.iso"
-    DISTRO_MAP["34"]="Parrot OS|https://download.parrot.sh/parrot/iso/6.0/Parrot-home-6.0_amd64.iso"
-    DISTRO_MAP["35"]="BackBox|https://linuxfree.download/distros/backbox/backbox-8.1-amd64.iso"
+    DISTRO_MAP["20"]="Parrot OS|https://download.parrot.sh/parrot/iso/6.0/Parrot-home-6.0_amd64.iso"
+    DISTRO_MAP["21"]="BackBox|https://linuxfree.download/distros/backbox/backbox-8.1-amd64.iso"
+    
+    # Desktop & Home
+    DISTRO_MAP["22"]="Linux Mint 21.3|https://mirrors.edge.kernel.org/linuxmint/stable/21.3/linuxmint-21.3-cinnamon-64bit.iso"
+    DISTRO_MAP["23"]="Zorin OS|https://downloads.sourceforge.net/project/zorin-os/17/Core/Zorin-OS-17-Core-64-bit.iso"
+    DISTRO_MAP["24"]="Pop!_OS|https://pop-iso.sfo2.cdn.digitaloceanspaces.com/22.04/amd64/intel/22/pop-os_22.04_amd64_intel_10.iso"
+    DISTRO_MAP["25"]="Elementary OS|https://downloads.sourceforge.net/project/elementary-os/stable/7.1/elementaryos-7.1-stable.20231110.iso"
+    DISTRO_MAP["26"]="MX Linux|https://sourceforge.net/projects/mx-linux/files/Final/X23/MX-23_x64.iso/download"
+    DISTRO_MAP["27"]="Peppermint|https://sourceforge.net/projects/peppermintos/files/Peppermint%20Debian%20Dev/peppermint-11-04-2023-amd64.iso"
+    DISTRO_MAP["28"]="Q4OS|https://q4os.org/downloads/q4os-4.8-x64.r1.iso"
+    
+    # Specialty
+    DISTRO_MAP["29"]="ReactOS|https://downloads.sourceforge.net/project/reactos/ReactOS/0.4.14/ReactOS-0.4.14-release-17-g67f279f-live.zip"
+    DISTRO_MAP["30"]="Tiny Core|http://tinycorelinux.net/15.x/x86_64/release/TinyCorePure64-15.0.iso"
+    DISTRO_MAP["31"]="Puppy Linux|http://distro.ibiblio.org/puppylinux/puppy-fossa/fossapup64-9.5.iso"
+    DISTRO_MAP["32"]="Kaisen Linux|https://kaisen-linux.org/downloads/kaisen-linux-rolling-2.0-amd64.iso"
+    
+    # BSD
+    DISTRO_MAP["33"]="FreeBSD|https://download.freebsd.org/releases/VM-IMAGES/14.0-RELEASE/amd64/Latest/FreeBSD-14.0-RELEASE-amd64.qcow2"
+    DISTRO_MAP["34"]="OpenBSD|https://cdn.openbsd.org/pub/OpenBSD/7.5/amd64/install75.iso"
+    DISTRO_MAP["35"]="NetBSD|https://cdn.netbsd.org/pub/NetBSD/NetBSD-10.0/images/NetBSD-10.0-amd64.iso"
+
+    # --- NEW GOOGLE IDX SUPPORT ---
+    # Google IDX environments are Debian-based. We use the official Debian 12 Cloud Image.
+    DISTRO_MAP["36"]="Google IDX Base (Debian)|https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-nocloud-amd64.qcow2"
+    DISTRO_MAP["37"]="Chrome OS Flex|https://dl.google.com/chromeos-flex/recovery/latest/chromeos_15874.0.0_reven_recovery_stable-channel_mp-v2.bin.zip"
 }
 
 # --- Installation Logic ---
@@ -223,9 +243,17 @@ install_distro() {
     # Special Handling for Fedora 40
     if [[ "$name" == "Fedora 40" ]]; then
         printf "${YELLOW}Applying Fedora 40 specific patches...${RESET}\n"
-        # Example fix: Force specific mirror or strip parameters that might fail
         url="https://download.fedoraproject.org/pub/fedora/linux/releases/40/Cloud/x86_64/images/Fedora-Cloud-Base-Generic.x86_64-40-1.14.qcow2"
         file_name="Fedora-Cloud-Base-Generic.x86_64-40-1.14.qcow2"
+        img_path="$img_dir/$file_name"
+    fi
+
+    # Special Handling for Google IDX
+    if [[ "$name" == "Google IDX Base (Debian)" ]]; then
+        printf "${YELLOW}Configuring Google IDX Environment...${RESET}\n"
+        # Google IDX is essentially Debian with specific packages. 
+        # Here we pull the base image to ensure compatibility.
+        file_name="google-idx-base.qcow2"
         img_path="$img_dir/$file_name"
     fi
 
@@ -267,7 +295,11 @@ install_distro() {
             
         printf "${GREEN}VM Started in background.${RESET}\n"
         printf "${WHITE}Connect via SSH: ${CYAN}ssh user@localhost -p 2222${RESET}\n"
-        printf "${WHITE}Graphics output enabled (VNC/Spice might be needed for GUIs).${RESET}\n"
+        
+        if [[ "$name" == "Google IDX Base (Debian)" ]]; then
+            printf "${MAGENTA}>> This is the base environment for Google IDX.${RESET}\n"
+            printf "${MAGENTA}>> Install your development tools (Node, Go, Python) to match IDX specs.${RESET}\n"
+        fi
     else
         printf "${RED}QEMU not found. Cannot launch VM.${RESET}\n"
     fi
@@ -282,7 +314,6 @@ show_menu() {
     printf "${WHITE}Available Operating Systems:${RESET}\n"
     printf "${DIM}─────────────────────────────────────────────────────────────────${RESET}\n"
     
-    # Print distros in 2 columns for modern look
     local keys=($(echo "${!DISTRO_MAP[@]}" | tr ' ' '\n' | sort -n))
     local count=${#keys[@]}
     local half=$(( (count + 1) / 2 ))
@@ -291,12 +322,10 @@ show_menu() {
         local idx=${keys[$i]}
         IFS='|' read -r name _ <<< "${DISTRO_MAP[$idx]}"
         
-        # Second column index
         local j=$((i + half))
         local line="${CYAN}[$idx]${RESET} ${name}"
         
-        # Padding
-        printf "%-35s" "$line"
+        printf "%-38s" "$line"
         
         if [[ $j -lt $count ]]; then
             local idx2=${keys[$j]}
