@@ -1,370 +1,471 @@
 #!/bin/bash
-
-# ==============================================================================
-# HYPER DOCK - Advanced Virtual Machine Deployment System
-# Version: 2.2 (VPMaker Logic Integrated + Cloud-Init Support)
-# ==============================================================================
-
-# --- Color Definitions ---
-RESET="\033[0m"
-BOLD="\033[1m"
-DIM="\033[2m"
-RED="\033[0;31m"
-GREEN="\033[0;32m"
-YELLOW="\033[0;33m"
-BLUE="\033[0;34m"
-MAGENTA="\033[0;35m"
-CYAN="\033[0;36m"
-WHITE="\033[0;37m"
-
-# --- Global Variables ---
-HYPER_VERSION="2.2.0"
-CONFIG_DIR="$HOME/.hyper_dock"
-VM_DIR="$HOME/hyper_dock_vms"
-LOG_FILE="$CONFIG_DIR/hyper.log"
-
-# --- Modern UI Functions ---
-
-init_environment() {
-    mkdir -p "$CONFIG_DIR"
-    mkdir -p "$VM_DIR"
-    clear
-}
-
-# Smooth typing effect
-type_text() {
-    local text="$1"
-    local delay=0.005
-    if [[ "$2" != "" ]]; then delay="$2"; fi
-    for ((i=0; i<${#text}; i++)); do
-        printf "${text:$i:1}"
-        sleep $delay
-    done
-}
-
-# Modern progress bar
-show_progress() {
-    local duration=${1}
-    local steps=40
-    printf "\n"
-    for ((i=0; i<=steps; i++)); do
-        local percentage=$((i * 100 / steps))
-        printf "\r${CYAN}[${RESET}"
-        for ((j=0; j<i; j++)); do printf "${GREEN}█${RESET}"; done
-        for ((k=i; k<steps; k++)); do printf "${DIM}─${RESET}"; done
-        printf "${CYAN}]${RESET} ${BOLD}${WHITE}%3d%%${RESET}" $percentage
-        sleep $(echo "scale=3; $duration / $steps" | bc)
-    done
-    printf "\n\n"
-}
-
-draw_box() {
-    local text="$1"
-    local width=60
-    local padding=$(( (width - ${#text}) / 2 ))
-    printf "${CYAN}┌${RESET}"
-    for ((i=0; i<width; i++)); do printf "${CYAN}─${RESET}"; done
-    printf "${CYAN}┐${RESET}\n"
-    printf "${CYAN}│${RESET}"
-    for ((i=0; i<padding; i++)); do printf " "; done
-    printf "${BOLD}${WHITE}%s${RESET}" "$text"
-    for ((i=padding+${#text}; i<width; i++)); do printf " "; done
-    printf "${CYAN}│${RESET}\n"
-    printf "${CYAN}└${RESET}"
-    for ((i=0; i<width; i++)); do printf "${CYAN}─${RESET}"; done
-    printf "${CYAN}┘${RESET}\n"
-}
-
-show_logo() {
-    clear
-    echo -e "${CYAN}"
-    cat << "EOF"
-    ██╗  ██╗██╗   ██╗██████╗ ███████╗██████╗ ███╗   ███╗ ██████╗ ██████╗ ██████╗ ███████╗
-    ██║  ██║██║   ██║██╔══██╗██╔════╝██╔══██╗████╗ ████║██╔═══██╗██╔══██╗██╔══██╗██╔════╝
-    ███████║██║   ██║██████╔╝█████╗  ██████╔╝██╔████╔██║██║   ██║██║  ██║██║  ██║█████╗  
-    ██╔══██║██║   ██║██╔══██╗██╔══╝  ██╔══██╗██║╚██╔╝██║██║   ██║██║  ██║██║  ██║██╔══╝  
-    ██║  ██║╚██████╔╝██████╔╝███████╗██║  ██║██║ ╚═╝ ██║╚██████╔╝██████╔╝██████╔╝███████╗
-    ╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝ ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝
-EOF
-    echo -e "${RESET}"
-    echo -e "${DIM}                  [ Advanced Virtualization Interface // Version $HYPER_VERSION ]${RESET}"
-    echo ""
-    type_text "${GREEN}>> System Initialized.${RESET}"
-    echo ""
-}
-
-# --- Core Logic ---
-
-check_dependencies() {
-    printf "${YELLOW}Checking system dependencies...${RESET}\n"
-    # Added genisoimage/cloud-image-utils for cloud-init support (VPMaker logic)
-    local deps=("qemu-system-x86_64" "wget" "curl" "genisoimage" "qemu-utils")
-    local missing=()
-    
-    for cmd in "${deps[@]}"; do
-        if ! command -v "$cmd" &> /dev/null; then
-            missing+=("$cmd")
-        fi
-    done
-
-    if [ ${#missing[@]} -ne 0 ]; then
-        printf "${RED}Missing dependencies: ${missing[*]}${RESET}\n"
-        printf "${YELLOW}Attempting to install missing packages...${RESET}\n"
-        if command -v apt-get &> /dev/null; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-x86 wget curl genisoimage qemu-utils > /dev/null
-        elif command -v dnf &> /dev/null; then
-            sudo dnf install -y -q qemu-kvm wget curl genisoimage qemu-img > /dev/null
-        elif command -v yum &> /dev/null; then
-            sudo yum install -y -q qemu-kvm wget curl genisoimage qemu-img > /dev/null
-        else
-            printf "${RED}Package manager not supported. Please install: ${missing[*]}${RESET}\n"
-            exit 1
-        fi
-    fi
-    printf "${GREEN}Dependencies satisfied.${RESET}\n\n"
-}
-
-# --- Distribution Configuration ---
-
-declare -A DISTRO_MAP
-
-load_distros() {
-    # Standard Linux
-    DISTRO_MAP["1"]="Ubuntu 24.04|https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
-    DISTRO_MAP["2"]="Ubuntu 22.04|https://cloud-images.ubuntu.com/releases/22.04/release/ubuntu-22.04-server-cloudimg-amd64.img"
-    DISTRO_MAP["3"]="Debian 12|https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-nocloud-amd64.qcow2"
-    
-    # Fedora Fixed
-    DISTRO_MAP["4"]="Fedora 40|https://download.fedoraproject.org/pub/fedora/linux/releases/40/Cloud/x86_64/images/Fedora-Cloud-Base-Generic.x86_64-40-1.14.qcow2"
-    DISTRO_MAP["5"]="Fedora 39|https://download.fedoraproject.org/pub/fedora/linux/releases/39/Cloud/x86_64/images/Fedora-Cloud-Base-Generic.x86_64-39-1.5.qcow2"
-    
-    # Enterprise
-    DISTRO_MAP["6"]="CentOS Stream 9|https://cloud.centos.org/centos/9-stream/x86_64/images/CentOS-Stream-GenericCloud-9-latest.x86_64.qcow2"
-    DISTRO_MAP["7"]="AlmaLinux 9|https://repo.almalinux.org/almalinux/9/cloud/x86_64/images/AlmaLinux-9-GenericCloud-latest.x86_64.qcow2"
-    DISTRO_MAP["8"]="Rocky Linux 9|https://dl.rockylinux.org/pub/rocky/9/images/x86_64/Rocky-9-GenericCloud-Base.latest.x86_64.qcow2"
-    
-    # Arch & Independent
-    DISTRO_MAP["9"]="Arch Linux|https://geo.mirror.pkgbuild.com/images/latest/Arch-Linux-x86_64-cloudimg.qcow2"
-    DISTRO_MAP["10"]="Manjaro|https://download.manjaro.org/kvm/manjaro-kvm-21.2.6.qcow2"
-    DISTRO_MAP["11"]="OpenSUSE Tumbleweed|https://download.opensuse.org/repositories/Cloud:/Images:/Tumbleweed/images/openSUSE-Tumbleweed-Cloud.qcow2"
-    DISTRO_MAP["12"]="OpenSUSE Leap 15.5|https://download.opensuse.org/distribution/leap/15.5/appliances/openSUSE-Leap-15.5-JeOS.x86_64-15.5.0-OpenStack-Cloud.qcow2"
-    DISTRO_MAP["13"]="Gentoo|https://gentoo.osuosl.org/experimental/amd64/openstack/gentoo-openstack-amd64-default-latest.qcow2"
-    DISTRO_MAP["14"]="Alpine Linux|https://dl-cdn.alpinelinux.org/alpine/v3.19/releases/x86_64/alpine-virt-3.19.0-x86_64.iso"
-    DISTRO_MAP["15"]="Void Linux|https://alpha.de.repo.voidlinux.org/live/void-live-x86_64-20221001-base.iso"
-    DISTRO_MAP["16"]="Slackware|https://slackware.uk/slackware/slackware64-15.0/isolinux/initrd.img" 
-    DISTRO_MAP["17"]="NixOS|https://channels.nixos.org/nixos-23.11/latest-nixos-minimal-x86_64-linux.iso"
-    DISTRO_MAP["18"]="Solus|https://downloads.getsol.us/isos/current/Solus-4.5-Budgie.iso"
-    
-    # Security & Penetration
-    DISTRO_MAP["19"]="Kali Linux|https://kali.download/base-images/kali-2024.1/kali-linux-2024.1-cloud-amd64.qcow2"
-    DISTRO_MAP["20"]="Parrot OS|https://download.parrot.sh/parrot/iso/6.0/Parrot-home-6.0_amd64.iso"
-    DISTRO_MAP["21"]="BackBox|https://linuxfree.download/distros/backbox/backbox-8.1-amd64.iso"
-    
-    # Desktop & Home
-    DISTRO_MAP["22"]="Linux Mint 21.3|https://mirrors.edge.kernel.org/linuxmint/stable/21.3/linuxmint-21.3-cinnamon-64bit.iso"
-    DISTRO_MAP["23"]="Zorin OS|https://downloads.sourceforge.net/project/zorin-os/17/Core/Zorin-OS-17-Core-64-bit.iso"
-    DISTRO_MAP["24"]="Pop!_OS|https://pop-iso.sfo2.cdn.digitaloceanspaces.com/22.04/amd64/intel/22/pop-os_22.04_amd64_intel_10.iso"
-    DISTRO_MAP["25"]="Elementary OS|https://downloads.sourceforge.net/project/elementary-os/stable/7.1/elementaryos-7.1-stable.20231110.iso"
-    DISTRO_MAP["26"]="MX Linux|https://sourceforge.net/projects/mx-linux/files/Final/X23/MX-23_x64.iso/download"
-    DISTRO_MAP["27"]="Peppermint|https://sourceforge.net/projects/peppermintos/files/Peppermint%20Debian%20Dev/peppermint-11-04-2023-amd64.iso"
-    DISTRO_MAP["28"]="Q4OS|https://q4os.org/downloads/q4os-4.8-x64.r1.iso"
-    
-    # Specialty
-    DISTRO_MAP["29"]="ReactOS|https://downloads.sourceforge.net/project/reactos/ReactOS/0.4.14/ReactOS-0.4.14-release-17-g67f279f-live.zip"
-    DISTRO_MAP["30"]="Tiny Core|http://tinycorelinux.net/15.x/x86_64/release/TinyCorePure64-15.0.iso"
-    DISTRO_MAP["31"]="Puppy Linux|http://distro.ibiblio.org/puppylinux/puppy-fossa/fossapup64-9.5.iso"
-    DISTRO_MAP["32"]="Kaisen Linux|https://kaisen-linux.org/downloads/kaisen-linux-rolling-2.0-amd64.iso"
-    
-    # BSD
-    DISTRO_MAP["33"]="FreeBSD|https://download.freebsd.org/releases/VM-IMAGES/14.0-RELEASE/amd64/Latest/FreeBSD-14.0-RELEASE-amd64.qcow2"
-    DISTRO_MAP["34"]="OpenBSD|https://cdn.openbsd.org/pub/OpenBSD/7.5/amd64/install75.iso"
-    DISTRO_MAP["35"]="NetBSD|https://cdn.netbsd.org/pub/NetBSD/NetBSD-10.0/images/NetBSD-10.0-amd64.iso"
-
-    # Google IDX & Chrome
-    DISTRO_MAP["36"]="Google IDX Base (Debian)|https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-nocloud-amd64.qcow2"
-    DISTRO_MAP["37"]="Chrome OS Flex|https://dl.google.com/chromeos-flex/recovery/latest/chromeos_15874.0.0_reven_recovery_stable-channel_mp-v2.bin.zip"
-}
-
-# --- VPMaker Logic: Cloud Init Generator ---
-
-generate_cloud_init() {
-    local vm_name=$1
-    local user=$2
-    local pass=$3
-    local cid_dir="$CONFIG_DIR/$vm_name-cidata"
-
-    mkdir -p "$cid_dir"
-
-    # Create meta-data
-    echo "instance-id: $vm_name" > "$cid_dir/meta-data"
-    echo "local-hostname: $vm_name" >> "$cid_dir/meta-data"
-
-    # Create user-data
-    cat << EOF > "$cid_dir/user-data"
-#cloud-config
-users:
-  - default
-  - name: $user
-    lock_passwd: false
-    hashed_passwd: $(openssl passwd -1 "$pass")
-    shell: /bin/bash
-    sudo: ALL=(ALL) NOPASSWD:ALL
-ssh_pwauth: True
-chpasswd:
-  expire: false
-EOF
-
-    # Generate ISO
-    local iso_path="$VM_DIR/$vm_name-cidata.iso"
-    genisoimage -output "$iso_path" -volid cidata -joliet -rock "$cid_dir/user-data" "$cid_dir/meta-data" > /dev/null 2>&1
-    
-    echo "$iso_path"
-}
-
-# --- Installation Logic ---
-
-install_distro() {
-    local choice=$1
-    local data="${DISTRO_MAP[$choice]}"
-    
-    if [[ -z "$data" ]]; then
-        printf "${RED}Invalid selection.${RESET}\n"
-        return 1
-    fi
-    
-    IFS='|' read -r name url <<< "$data"
-    
-    clear
-    draw_box "Provisioning $name"
-    echo ""
-    
-    # 1. Ask for Credentials (VPMaker Logic)
-    read -p "$(echo -e "${CYAN}Enter Username for VM [default: root]: ${RESET}")" vm_user
-    vm_user=${vm_user:-root}
-    
-    while true; do
-        read -s -p "$(echo -e "${CYAN}Enter Password: ${RESET}")" vm_pass
-        echo ""
-        read -s -p "$(echo -e "${CYAN}Confirm Password: ${RESET}")" vm_pass2
-        echo ""
-        if [[ "$vm_pass" == "$vm_pass2" && -n "$vm_pass" ]]; then
-            break
-        else
-            echo -e "${RED}Passwords do not match or are empty. Try again.${RESET}"
-        fi
-    done
-    
-    local img_path="$VM_DIR/$(basename "$url" | sed 's/?.*//')"
-    
-    # Special Handling for Fedora 40 (Fix)
-    if [[ "$name" == "Fedora 40" ]]; then
-        printf "${YELLOW}Applying Fedora 40 specific patches...${RESET}\n"
-        url="https://download.fedoraproject.org/pub/fedora/linux/releases/40/Cloud/x86_64/images/Fedora-Cloud-Base-Generic.x86_64-40-1.14.qcow2"
-        img_path="$VM_DIR/Fedora-Cloud-Base-Generic.x86_64-40-1.14.qcow2"
-    fi
-
-    # 2. Download Image
-    if [[ -f "$img_path" ]]; then
-        printf "${GREEN}Image already exists. Skipping download.${RESET}\n"
-    else
-        printf "${CYAN}Downloading $name...${RESET}\n"
-        printf "${DIM}Source: $url${RESET}\n\n"
-        wget --show-progress -q -O "$img_path" "$url"
-        if [[ $? -ne 0 ]]; then
-            printf "${RED}Download failed.${RESET}\n"
-            return 1
-        fi
-    fi
-
-    # 3. Generate Cloud Init ISO (VPMaker Logic)
-    printf "\n${YELLOW}Generating Cloud-Init configuration...${RESET}\n"
-    local cid_iso=$(generate_cloud_init "hd-$choice" "$vm_user" "$vm_pass")
-    printf "${GREEN}Cloud-Init ISO generated.${RESET}\n"
-
-    # 4. Launch VM
-    printf "${YELLOW}Launching Virtual Machine...${RESET}\n"
-    show_progress 2
-
-    # Check if KVM is available
-    local accel="-accel tcg"
-    if [[ -e /dev/kvm ]]; then
-        accel="-enable-kvm"
-    fi
-
-    qemu-system-x86_64 \
-        -m 2048 \
-        -smp 2 \
-        -cpu host \
-        $accel \
-        -drive file="$img_path",format=qcow2,if=virtio \
-        -cdrom "$cid_iso" \
-        -netdev user,id=net0,hostfwd=tcp::2222-:22 \
-        -device virtio-net-pci,netdev=net0 \
-        -nographic \
-        -daemonize \
-        -name "HyperDock-$name"
-
-    printf "${GREEN}VM Started Successfully!${RESET}\n"
-    printf "${WHITE}--------------------------------------------------${RESET}\n"
-    printf "${WHITE}Connect via SSH: ${CYAN}ssh $vm_user@localhost -p 2222${RESET}\n"
-    printf "${WHITE}Password: ${DIM}(The password you set above)${RESET}\n"
-    printf "${WHITE}--------------------------------------------------${RESET}\n"
-}
-
-# --- Main Menu ---
-
-show_menu() {
-    clear
-    show_logo
-    
-    printf "${WHITE}Available Operating Systems:${RESET}\n"
-    printf "${DIM}─────────────────────────────────────────────────────────────────${RESET}\n"
-    
-    local keys=($(echo "${!DISTRO_MAP[@]}" | tr ' ' '\n' | sort -n))
-    local count=${#keys[@]}
-    local half=$(( (count + 1) / 2 ))
-    
-    for ((i=0; i<half; i++)); do
-        local idx=${keys[$i]}
-        IFS='|' read -r name _ <<< "${DISTRO_MAP[$idx]}"
-        
-        local j=$((i + half))
-        local line="${CYAN}[$idx]${RESET} ${name}"
-        
-        printf "%-38s" "$line"
-        
-        if [[ $j -lt $count ]]; then
-            local idx2=${keys[$j]}
-            IFS='|' read -r name2 _ <<< "${DISTRO_MAP[$idx2]}"
-            printf "${CYAN}[$idx2]${RESET} ${name2}"
-        fi
-        printf "\n"
-    done
-    
-    printf "${DIM}─────────────────────────────────────────────────────────────────${RESET}\n"
-    printf "${WHITE}[Q] Quit${RESET}\n\n"
-    
-    read -p "$(echo -e "${BOLD}${GREEN}Select OS to Deploy: ${RESET}")" choice
-    
-    if [[ "$choice" == "Q" || "$choice" == "q" ]]; then
-        echo "Goodbye!"
-        exit 0
-    fi
-    
-    install_distro "$choice"
-    read -p "Press Enter to continue..."
-}
-
-# --- Entry Point ---
-
-main() {
-    init_environment
-    check_dependencies
-    load_distros
-    
-    while true; do
-        show_menu
-    done
-}
-
-main
+ 
+ # COLORS - BLUE THEME
+ R="\e[1;34m"  # Bright Blue
+ G="\e[1;36m"  # Cyan
+ Y="\e[1;33m"  # Yellow
+ B="\e[1;94m"  # Light Blue
+ C="\e[1;96m"  # Bright Cyan
+ M="\e[1;35m"  # Magenta
+ W="\e[1;37m"  # White
+ N="\e[0m"     # Reset
+ 
+ type_out() {
+     local text="$1"
+     local delay="${2:-0.003}"
+     local i char
+     for ((i=0; i<${#text}; i++)); do
+         char="${text:i:1}"
+         echo -ne "$char"
+         sleep "$delay"
+     done
+ }
+ 
+ type_line() {
+     local text="$1"
+     local delay="${2:-0.003}"
+     type_out "$text" "$delay"
+     echo
+ }
+ 
+ # JISHNU NETWORK ASCII ART
+ print_jishnu_logo() {
+     echo -e "\n${R}╔══════════════════════════════════════════════════════════╗${N}"
+     echo -e "${R}║${W}      ██╗  ██╗██╗   ██╗██████╗ ███████╗██████╗         ${R}║${N}"
+     echo -e "${R}║${W}      ██║  ██║██║   ██║██╔══██╗██╔════╝██╔══██╗        ${R}║${N}"
+     echo -e "${R}║${W}      ███████║██║   ██║██████╔╝███████╗██████╔╝        ${R}║${N}"
+     echo -e "${R}║${W}      ██╔══██║██║   ██║██╔═══╝ ╚════██║██╔══██╗        ${R}║${N}"
+     echo -e "${R}║${W}      ██║  ██║╚██████╔╝██║     ███████║██║  ██║        ${R}║${N}"
+     echo -e "${R}║${W}      ╚═╝  ╚═╝ ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═╝        ${R}║${N}"
+     echo -e "${R}║${Y}                  H Y P E R D O C K                    ${R}║${N}"
+     echo -e "${R}╚══════════════════════════════════════════════════════════╝${N}"
+     echo -e "${Y}                    Made by Hyperdock                  ${N}\n"
+ }
+ 
+ # NEW UI STYLE FUNCTIONS
+ print_box() {
+     local text="$1"
+     local color="$2"
+     local width=52
+     local padding=$(( (width - ${#text} - 2) / 2 ))
+     
+     echo -e "${color}╔$(printf '═%.0s' $(seq 1 $((width-2))))╗${N}"
+     printf "${color}║%*s${W}%s${color}%*s║${N}\n" $padding "" "$text" $((padding - ((${#text} % 2) ? 1 : 0))) ""
+     echo -e "${color}╚$(printf '═%.0s' $(seq 1 $((width-2))))╝${N}"
+ }
+ 
+ print_header() {
+     clear
+     print_jishnu_logo
+     echo -e "${R}══════════════════════════════════════════════════════════${N}"
+     type_line "${W}            DEVELOPMENT MANAGEMENT CONSOLE             ${N}"
+     echo -e "${R}══════════════════════════════════════════════════════════${N}\n"
+ }
+ 
+ print_option() {
+     local num="$1"
+     local text="$2"
+     local color="$3"
+     
+     echo -e "  ${color}╔══════════════════════════════════════════════╗${N}"
+     echo -e "  ${color}║${W}  [${R}$num${W}]  ${Y}$text$(printf '%*s' $((33 - ${#text} - 6)))${color}║${N}"
+     echo -e "  ${color}╚══════════════════════════════════════════════╝${N}\n"
+ }
+ 
+ print_status() {
+     local text="$1"
+     local color="$2"
+     echo
+     type_line "${R}▶▶${color} ${text}${N}" 0.002
+     echo
+ }
+ 
+ print_divider() {
+     echo -e "${R}══════════════════════════════════════════════════════════${N}"
+ }
+ 
+ print_footer() {
+     echo -e "${R}┌──────────────────────────────────────────────────────┐${N}"
+     echo -e "${R}│${W}             Hyperdock © 2024 - All Rights Reserved ${R}│${N}"
+     echo -e "${R}└──────────────────────────────────────────────────────┘${N}\n"
+ }
+ 
+ print_linux_installer_menu() {
+     echo -e "${R}╔══════════════════════════════════════════════════════════╗${N}"
+     echo -e "${R}║${Y}                 LINUX INSTALLER (50+)               ${R}║${N}"
+     echo -e "${R}╚══════════════════════════════════════════════════════════╝${N}\n"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "1" "Ubuntu 24.04 Desktop" "2" "Ubuntu 22.04 Desktop"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "3" "Ubuntu 20.04 Desktop" "4" "Ubuntu Server 24.04"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "5" "Ubuntu Server 22.04" "6" "Kubuntu 24.04"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "7" "Xubuntu 24.04" "8" "Lubuntu 24.04"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "9" "Ubuntu Budgie 24.04" "10" "Debian 12 Netinst"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "11" "Debian 11 Netinst" "12" "Fedora 40 Server"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "13" "Fedora 39 Server" "14" "Fedora 38 Server"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "15" "Arch Linux" "16" "Manjaro XFCE"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "17" "EndeavourOS" "18" "Kali Linux"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "19" "Parrot OS" "20" "Linux Mint 21.3"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "21" "Pop!_OS 22.04" "22" "Zorin OS 17"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "23" "elementary OS 7.1" "24" "Deepin 23"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "25" "MX Linux 23" "26" "Garuda Dr460nized"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "27" "NixOS 24.05" "28" "Gentoo Minimal"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "29" "Slackware 15.0" "30" "Clear Linux"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "31" "Void Linux" "32" "Solus"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "33" "AlmaLinux 9" "34" "AlmaLinux 8"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "35" "Rocky Linux 9" "36" "Rocky Linux 8"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "37" "CentOS Stream 9" "38" "CentOS Stream 8"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "39" "Oracle Linux 9" "40" "Oracle Linux 8"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "41" "openSUSE Leap 15.6" "42" "openSUSE Tumbleweed"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "43" "KDE neon User" "44" "Q4OS 5"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "45" "Mageia 9" "46" "ROSA Fresh"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "47" "antiX 23" "48" "Alpine 3.20"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "49" "Puppy Linux" "50" "Tails 6"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "51" "Fedora Silverblue 40" "52" "Ubuntu 24.04 Minimal"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "53" "Debian 12 DVD" "54" "Fedora 40 KDE"
+     printf "${W}%2s${Y} %-28s  ${W}%2s${Y} %-28s${N}\n" "55" "openSUSE MicroOS" "56" "Ubuntu 22.04 Minimal"
+     echo
+     echo -ne "${R}▶▶${W} Select Distro [1-56] : ${Y}"
+     read -p "" distro_choice
+     echo -ne "${N}"
+     
+     case $distro_choice in
+         1) DISTRO_NAME="Ubuntu 24.04 Desktop"; ISO_URL="https://releases.ubuntu.com/24.04/ubuntu-24.04-desktop-amd64.iso" ;;
+         2) DISTRO_NAME="Ubuntu 22.04 Desktop"; ISO_URL="https://releases.ubuntu.com/22.04/ubuntu-22.04.4-desktop-amd64.iso" ;;
+         3) DISTRO_NAME="Ubuntu 20.04 Desktop"; ISO_URL="https://releases.ubuntu.com/20.04/ubuntu-20.04.6-desktop-amd64.iso" ;;
+         4) DISTRO_NAME="Ubuntu Server 24.04"; ISO_URL="https://releases.ubuntu.com/24.04/ubuntu-24.04-live-server-amd64.iso" ;;
+         5) DISTRO_NAME="Ubuntu Server 22.04"; ISO_URL="https://releases.ubuntu.com/22.04/ubuntu-22.04.4-live-server-amd64.iso" ;;
+         6) DISTRO_NAME="Kubuntu 24.04"; ISO_URL="https://cdimage.ubuntu.com/kubuntu/releases/24.04/release/kubuntu-24.04-desktop-amd64.iso" ;;
+         7) DISTRO_NAME="Xubuntu 24.04"; ISO_URL="https://cdimage.ubuntu.com/xubuntu/releases/24.04/release/xubuntu-24.04-desktop-amd64.iso" ;;
+         8) DISTRO_NAME="Lubuntu 24.04"; ISO_URL="https://cdimage.ubuntu.com/lubuntu/releases/24.04/release/lubuntu-24.04-desktop-amd64.iso" ;;
+         9) DISTRO_NAME="Ubuntu Budgie 24.04"; ISO_URL="https://cdimage.ubuntu.com/ubuntu-budgie/releases/24.04/release/ubuntu-budgie-24.04-desktop-amd64.iso" ;;
+         10) DISTRO_NAME="Debian 12 Netinst"; ISO_URL="https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-12.6.0-amd64-netinst.iso" ;;
+         11) DISTRO_NAME="Debian 11 Netinst"; ISO_URL="https://cdimage.debian.org/debian-cd/current/oldstable/amd64/iso-cd/debian-11.10.0-amd64-netinst.iso" ;;
+         12) DISTRO_NAME="Fedora 40 Server"; ISO_URL="https://download.fedoraproject.org/pub/fedora/linux/releases/40/Server/x86_64/iso/Fedora-Server-netinst-x86_64-40-1.14.iso" ;;
+         13) DISTRO_NAME="Fedora 39 Server"; ISO_URL="https://download.fedoraproject.org/pub/fedora/linux/releases/39/Server/x86_64/iso/Fedora-Server-netinst-x86_64-39-1.5.iso" ;;
+         14) DISTRO_NAME="Fedora 38 Server"; ISO_URL="https://download.fedoraproject.org/pub/fedora/linux/releases/38/Server/x86_64/iso/Fedora-Server-netinst-x86_64-38-1.6.iso" ;;
+         15) DISTRO_NAME="Arch Linux"; ISO_URL="https://geo.mirror.pkgbuild.com/iso/latest/archlinux-x86_64.iso" ;;
+         16) DISTRO_NAME="Manjaro XFCE"; ISO_URL="https://download.manjaro.org/xfce/24.0.0/manjaro-xfce-24.0.0-240527-linux66.iso" ;;
+         17) DISTRO_NAME="EndeavourOS"; ISO_URL="https://mirrors.gigenet.com/endeavouros/iso/EndeavourOS_Galileo_11_2023.iso" ;;
+         18) DISTRO_NAME="Kali Linux"; ISO_URL="https://cdimage.kali.org/kali-2024.2/kali-linux-2024.2-installer-amd64.iso" ;;
+         19) DISTRO_NAME="Parrot OS"; ISO_URL="https://deb.parrot.sh/parrot/iso/6.1/Parrot-security-6.1_amd64.iso" ;;
+         20) DISTRO_NAME="Linux Mint 21.3"; ISO_URL="https://mirrors.edge.kernel.org/linuxmint/stable/21.3/linuxmint-21.3-cinnamon-64bit.iso" ;;
+         21) DISTRO_NAME="Pop!_OS 22.04"; ISO_URL="https://iso.pop-os.org/22.04/amd64/intel/46/pop-os_22.04_amd64_intel_46.iso" ;;
+         22) DISTRO_NAME="Zorin OS 17"; ISO_URL="https://zorinos.com/download/17/education/64bit" ;;
+         23) DISTRO_NAME="elementary OS 7.1"; ISO_URL="https://objects.githubusercontent.com/github-production-release-asset-2e65be/13489680/4a5120cc-192a-4df6-80f0-4b50c1e2ed7f?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=releaseassetproduction%2F20240301%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20240301T000000Z&X-Amz-Expires=300&X-Amz-Signature=placeholder&X-Amz-SignedHeaders=host&response-content-disposition=attachment%3B%20filename%3Delementaryos-7.1-stable.20231031rc.iso&response-content-type=application%2Foctet-stream" ;;
+         24) DISTRO_NAME="Deepin 23"; ISO_URL="https://cdimage.deepin.com/releases/23/amd64/deepin-desktop-community-23-amd64.iso" ;;
+         25) DISTRO_NAME="MX Linux 23"; ISO_URL="https://pilotfiber.dl.sourceforge.net/project/mx-linux/Final/Xfce/MX-23.3_x64.iso" ;;
+         26) DISTRO_NAME="Garuda Dr460nized"; ISO_URL="https://sourceforge.net/projects/garuda-linux/files/dr460nized/240424/garuda-dr460nized-linux-zen-240424.iso/download" ;;
+         27) DISTRO_NAME="NixOS 24.05"; ISO_URL="https://channels.nixos.org/nixos-24.05/latest-nixos-gnome-x86_64-linux.iso" ;;
+         28) DISTRO_NAME="Gentoo Minimal"; ISO_URL="https://distfiles.gentoo.org/releases/amd64/autobuilds/current-install-amd64-minimal/install-amd64-minimal.iso" ;;
+         29) DISTRO_NAME="Slackware 15.0"; ISO_URL="https://mirrors.slackware.com/slackware/slackware64-15.0-iso/slackware64-15.0-install-dvd.iso" ;;
+         30) DISTRO_NAME="Clear Linux"; ISO_URL="https://cdn.download.clearlinux.org/releases/41020/clear/clear-41020-live-desktop.iso" ;;
+         31) DISTRO_NAME="Void Linux"; ISO_URL="https://repo-default.voidlinux.org/live/current/void-live-x86_64-20230628.iso" ;;
+         32) DISTRO_NAME="Solus"; ISO_URL="https://mirrors.rit.edu/solus/images/4.5/Solus-4.5-GNOME.iso" ;;
+         33) DISTRO_NAME="AlmaLinux 9"; ISO_URL="https://repo.almalinux.org/almalinux/9/isos/x86_64/AlmaLinux-9-latest-x86_64-dvd.iso" ;;
+         34) DISTRO_NAME="AlmaLinux 8"; ISO_URL="https://repo.almalinux.org/almalinux/8/isos/x86_64/AlmaLinux-8-latest-x86_64-dvd.iso" ;;
+         35) DISTRO_NAME="Rocky Linux 9"; ISO_URL="https://download.rockylinux.org/pub/rocky/9/isos/x86_64/Rocky-9-latest-x86_64-dvd.iso" ;;
+         36) DISTRO_NAME="Rocky Linux 8"; ISO_URL="https://download.rockylinux.org/pub/rocky/8/isos/x86_64/Rocky-8-latest-x86_64-dvd.iso" ;;
+         37) DISTRO_NAME="CentOS Stream 9"; ISO_URL="https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/iso/CentOS-Stream-9-latest-x86_64-dvd1.iso" ;;
+         38) DISTRO_NAME="CentOS Stream 8"; ISO_URL="https://mirror.stream.centos.org/8-stream/BaseOS/x86_64/iso/CentOS-Stream-8-latest-x86_64-dvd1.iso" ;;
+         39) DISTRO_NAME="Oracle Linux 9"; ISO_URL="https://yum.oracle.com/ISOS/OracleLinux/OL9/u4/x86_64/OracleLinux-R9-U4-x86_64-dvd.iso" ;;
+         40) DISTRO_NAME="Oracle Linux 8"; ISO_URL="https://yum.oracle.com/ISOS/OracleLinux/OL8/u10/x86_64/OracleLinux-R8-U10-x86_64-dvd.iso" ;;
+         41) DISTRO_NAME="openSUSE Leap 15.6"; ISO_URL="https://download.opensuse.org/distribution/leap/15.6/iso/openSUSE-Leap-15.6-DVD-x86_64-Media.iso" ;;
+         42) DISTRO_NAME="openSUSE Tumbleweed"; ISO_URL="https://download.opensuse.org/tumbleweed/iso/openSUSE-Tumbleweed-DVD-x86_64-Current.iso" ;;
+         43) DISTRO_NAME="KDE neon User"; ISO_URL="https://files.kde.org/neon/images/user/20240425-0659/neon-user-20240425-0659.iso" ;;
+         44) DISTRO_NAME="Q4OS 5"; ISO_URL="https://sourceforge.net/projects/q4os/files/stable/q4os-5.2-x64.r1.iso/download" ;;
+         45) DISTRO_NAME="Mageia 9"; ISO_URL="https://mirror.math.princeton.edu/pub/mageia/distrib/9/iso/x86_64/Mageia-9-x86_64.iso" ;;
+         46) DISTRO_NAME="ROSA Fresh"; ISO_URL="https://mirror.rosalab.ru/rosa/rosa2021.1/iso/x86_64/ROSA.FRESH.KDE5.x86_64.iso" ;;
+         47) DISTRO_NAME="antiX 23"; ISO_URL="https://sourceforge.net/projects/antix-linux/files/Final/antiX-23_x64-full.iso/download" ;;
+         48) DISTRO_NAME="Alpine 3.20"; ISO_URL="https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/x86_64/alpine-standard-3.20.0-x86_64.iso" ;;
+         49) DISTRO_NAME="Puppy Linux"; ISO_URL="https://distro.ibiblio.org/puppylinux/puppy-fossa/FossaPup64-9.5.iso" ;;
+         50) DISTRO_NAME="Tails 6"; ISO_URL="https://mirrors.edge.kernel.org/tails/stable/tails-amd64-6.7/tails-amd64-6.7.iso" ;;
+         51) DISTRO_NAME="Fedora Silverblue 40"; ISO_URL="https://download.fedoraproject.org/pub/fedora/linux/releases/40/Silverblue/x86_64/iso/Fedora-Silverblue-ostree-x86_64-40-1.14.iso" ;;
+         52) DISTRO_NAME="Ubuntu 24.04 Minimal"; ISO_URL="https://cdimage.ubuntu.com/ubuntu-minimal/releases/24.04/release/ubuntu-minimal-24.04-live-server-amd64.iso" ;;
+         53) DISTRO_NAME="Debian 12 DVD"; ISO_URL="https://cdimage.debian.org/debian-cd/current/amd64/iso-dvd/debian-12.6.0-amd64-DVD-1.iso" ;;
+         54) DISTRO_NAME="Fedora 40 KDE"; ISO_URL="https://download.fedoraproject.org/pub/fedora/linux/releases/40/Spins/x86_64/iso/Fedora-KDE-Live-x86_64-40-1.14.iso" ;;
+         55) DISTRO_NAME="openSUSE MicroOS"; ISO_URL="https://download.opensuse.org/tumbleweed/iso/openSUSE-MicroOS-DVD-x86_64-Current.iso" ;;
+         56) DISTRO_NAME="Ubuntu 22.04 Minimal"; ISO_URL="https://cdimage.ubuntu.com/ubuntu-minimal/releases/22.04/release/ubuntu-minimal-22.04.4-live-server-amd64.iso" ;;
+         *) DISTRO_NAME="Custom ISO"; ISO_URL="" ;;
+     esac
+ }
+ 
+ download_iso_if_needed() {
+     local iso_dir="$1"
+     local iso_url="$2"
+     local iso_name
+     if [ -z "$iso_url" ]; then
+         return
+     fi
+     iso_name="${iso_url##*/}"
+     ISO_PATH="$iso_dir/$iso_name"
+     if [ -f "$ISO_PATH" ]; then
+         echo -e "${G}✅ ISO already exists: ${ISO_PATH}${N}"
+         return
+     fi
+     echo -e "${Y}⬇️  Downloading ISO for ${DISTRO_NAME}...${N}"
+     curl -L --fail -o "$ISO_PATH" "$iso_url"
+     if [ $? -ne 0 ]; then
+         echo -e "${R}▶▶${W} Download failed for ${DISTRO_NAME}.${N}"
+         echo -ne "${R}▶▶${W} Enter direct ISO URL or leave blank to skip: ${Y}"
+         read -p "" custom_url
+         echo -ne "${N}"
+         if [ -n "$custom_url" ]; then
+             ISO_PATH="$iso_dir/${custom_url##*/}"
+             curl -L --fail -o "$ISO_PATH" "$custom_url"
+         fi
+     fi
+ }
+ 
+ # MAIN MENU LOOP
+ while true; do
+     print_header
+     
+     echo -e "${R}╔══════════════════════════════════════════════════════════╗${N}"
+     echo -e "${R}║${Y}                    MAIN OPTIONS                      ${R}║${N}"
+     echo -e "${R}╚══════════════════════════════════════════════════════════╝${N}\n"
+     
+       print_option "1" "🚀 GitHub VPS Maker" "$R"
+       print_option "2" "🔧 IDX Tool Setup" "$R"
+       print_option "3" "⚡ IDX VPS Maker" "$R"
+       print_option "4" "🌐 Real VPS (Any + KVM)" "$R"
+       print_option "5" "❌ Exit" "$R"
+ 
+     
+     print_divider
+     echo -ne "${R}▶▶${W} Select Option [${R}1-5${W}] : ${Y}"
+     read -p "" op
+     echo -ne "${N}"
+     
+     case $op in
+     
+     # =========================================================
+     # (1) GITHUB VPS MAKER - ENHANCED WITH JISHNU THEME
+     # =========================================================
+     1)
+         clear
+         print_jishnu_logo
+         print_status "🚀 GITHUB VPS MAKER" "$R"
+         print_divider
+         echo
+         
+         RAM=15000
+         CPU=4
+         DISK_SIZE=100G
+         CONTAINER_NAME=hopingboyz
+         IMAGE_NAME=hopingboyz/debain12
+         VMDATA_DIR="$PWD/vmdata"
+         
+         echo -e "${R}╔══════════════════════════════════════════════════════════╗${N}"
+         echo -e "${R}║${W}               GITHUB VPS CONFIGURATION               ${R}║${N}"
+         echo -e "${R}╚══════════════════════════════════════════════════════════╝${N}\n"
+         
+         echo -e "${Y}📁 Creating VM data directory...${N}"
+         mkdir -p "$VMDATA_DIR"
+         
+         echo -e "\n${R}┌──────────────────────────────────────────────────────┐${N}"
+         echo -e "${R}│${W} ${G}RAM${W}        : ${Y}$RAM MB${W}                           ${R}│${N}"
+         echo -e "${R}│${W} ${G}CPU${W}        : ${Y}$CPU cores${W}                        ${R}│${N}"
+         echo -e "${R}│${W} ${G}DISK SIZE${W}  : ${Y}$DISK_SIZE${W}                        ${R}│${N}"
+         echo -e "${R}│${W} ${G}NAME${W}       : ${Y}$CONTAINER_NAME${W}                   ${R}│${N}"
+         echo -e "${R}│${W} ${G}IMAGE${W}      : ${Y}$IMAGE_NAME${W}                       ${R}│${N}"
+         echo -e "${R}│${W} ${G}TYPE${W}       : ${Y}GitHub Docker VPS${W}                 ${R}│${N}"
+         echo -e "${R}└──────────────────────────────────────────────────────┘${N}\n"
+         
+         echo -e "${R}▶▶${W} Launching GitHub VPS...${N}"
+         echo -e "${Y}──────────────────────────────────────────────────────${N}"
+         
+         docker run -it --rm \
+           --name "$CONTAINER_NAME" \
+           --device /dev/kvm \
+           -v "$VMDATA_DIR":/vmdata \
+           -e RAM="$RAM" \
+           -e CPU="$CPU" \
+           -e DISK_SIZE="$DISK_SIZE" \
+           "$IMAGE_NAME"
+         
+         echo -e "\n${R}══════════════════════════════════════════════════════════${N}"
+         echo -e "${R}▶▶${W} GitHub VPS session ended.${N}"
+         echo -ne "${R}▶▶${W} Press Enter to return to main menu...${N}"
+         read -p ""
+         ;;
+     
+     # =========================================================
+     # (2) IDX TOOL SETUP - ENHANCED WITH JISHNU THEME
+     # =========================================================
+     2)
+         clear
+         print_jishnu_logo
+         print_status "🔧 IDX TOOL SETUP" "$R"
+         print_divider
+         echo
+         
+         echo -e "${R}╔══════════════════════════════════════════════════════════╗${N}"
+         echo -e "${R}║${W}              IDX DEVELOPMENT TOOL SETUP               ${R}║${N}"
+         echo -e "${R}╚══════════════════════════════════════════════════════════╝${N}\n"
+         
+         echo -e "${Y}🧹 Cleaning up old files...${N}"
+         cd
+         rm -rf myapp
+         rm -rf flutter
+         
+         cd vps123
+         
+         if [ ! -d ".idx" ]; then
+             echo -e "${G}📁 Creating .idx directory...${N}"
+             mkdir .idx
+             cd .idx
+             
+             echo -e "${C}📝 Creating dev.nix configuration...${N}"
+             echo -e "${Y}──────────────────────────────────────────────────────${N}"
+             
+             cat <<EOF > dev.nix
+ { pkgs, ... }: {
+   channel = "stable-24.05";
+ 
+   packages = with pkgs; [
+     unzip
+     openssh
+     git
+     qemu_kvm
+     sudo
+     cdrkit
+     cloud-utils
+     qemu
+   ];
+ 
+   env = {
+     EDITOR = "nano";
+   };
+ 
+   idx = {
+     extensions = [
+       "Dart-Code.flutter"
+       "Dart-Code.dart-code"
+     ];
+ 
+     workspace = {
+       onCreate = { };
+       onStart = { };
+     };
+ 
+     previews = {
+       enable = false;
+     };
+   };
+ }
+ EOF
+             
+             echo -e "${Y}──────────────────────────────────────────────────────${N}"
+             echo -e "\n${G}✅ IDX TOOL SETUP COMPLETE!${N}"
+             echo -e "${R}┌──────────────────────────────────────────────────────┐${N}"
+             echo -e "${R}│${W} ${G}Status${W}   : ${Y}Ready to use${W}                        ${R}│${N}"
+             echo -e "${R}│${W} ${G}Location${W} : ${Y}~/vps123/.idx${W}                       ${R}│${N}"
+             echo -e "${R}│${W} ${G}Tool${W}     : ${Y}IDX Development Environment${W}         ${R}│${N}"
+             echo -e "${R}│${W} ${G}Version${W}  : ${Y}Stable 24.05${W}                        ${R}│${N}"
+             echo -e "${R}└──────────────────────────────────────────────────────┘${N}"
+         else
+             echo -e "${R}┌──────────────────────────────────────────────────────┐${N}"
+             echo -e "${R}│${Y} ⚠ IDX Tool already setup — skipping.${W}               ${R}│${N}"
+             echo -e "${R}│${W} Location: ${Y}~/vps123/.idx${W}                          ${R}│${N}"
+             echo -e "${R}└──────────────────────────────────────────────────────┘${N}"
+         fi
+         
+         echo -e "\n${R}══════════════════════════════════════════════════════════${N}"
+         echo -ne "${R}▶▶${W} Press Enter to return to main menu...${N}"
+         read -p ""
+         ;;
+     
+     # =========================================================
+     # (3) IDX VPS MAKER — ENHANCED WITH JISHNU THEME
+     # =========================================================
+     3)
+         clear
+         print_jishnu_logo
+         print_status "⚡ IDX VPS MAKER" "$R"
+         print_divider
+         echo
+         
+         echo -e "${R}╔══════════════════════════════════════════════════════════╗${N}"
+         echo -e "${R}║${W}              IDX VPS CREATION TOOL                  ${R}║${N}"
+         echo -e "${R}╚══════════════════════════════════════════════════════════╝${N}\n"
+         
+         echo -e "${C}📡 Connecting to GitHub repository...${N}"
+         echo -e "${Y}──────────────────────────────────────────────────────${N}"
+         
+         echo -e "\n${R}▶▶${W} Executing IDX VPS Maker script...${N}"
+         echo -e "${Y}──────────────────────────────────────────────────────${N}"
+         
+         bash <(curl -s `https://raw.githubusercontent.com/jishnu-limited/app-build-journey/refs/heads/main/vpmakerkvmidx`) 
+         
+         echo -e "\n${R}══════════════════════════════════════════════════════════${N}"
+         echo -e "${R}▶▶${W} IDX VPS Maker execution completed.${N}"
+         echo -ne "${R}▶▶${W} Press Enter to return to main menu...${N}"
+         read -p ""
+         ;;
+ 
+     # =========================================================
+     # (4) REAL VPS (ANY + KVM)
+     # =========================================================
+     4)
+         clear
+         print_jishnu_logo
+         print_status "🌐 REAL VPS (ANY + KVM)" "$R"
+         print_divider
+         echo
+ 
+         echo -e "${R}╔══════════════════════════════════════════════════════════╗${N}"
+         echo -e "${R}║${W}            REAL VPS DEPLOYMENT MODULE               ${R}║${N}"
+         echo -e "${R}╚══════════════════════════════════════════════════════════╝${N}\n"
+ 
+         VMDATA_DIR="$PWD/vmdata"
+         ISO_DIR="$VMDATA_DIR/iso"
+         mkdir -p "$ISO_DIR"
+         print_linux_installer_menu
+         download_iso_if_needed "$ISO_DIR" "$ISO_URL"
+ 
+         echo -e "${Y}🔍 Running disk & system preparation (dd.sh)...${N}"
+         echo -e "${Y}──────────────────────────────────────────────────────${N}"
+         bash <(curl -s `https://raw.githubusercontent.com/nobita329/The-Coding-Hub/refs/heads/main/srv/vm/dd.sh`) 
+ 
+         echo -e "\n${G}✅ Disk preparation completed.${N}\n"
+ 
+         echo -e "${Y}🚀 Launching Real VPS installer (vm2.sh)...${N}"
+         echo -e "${Y}──────────────────────────────────────────────────────${N}"
+         bash <(curl -s `https://raw.githubusercontent.com/JishnuTheGamer/Vps/refs/heads/main/n`) 
+ 
+         echo -e "\n${R}══════════════════════════════════════════════════════════${N}"
+         echo -e "${R}▶▶${W} Real VPS process finished.${N}"
+         echo -ne "${R}▶▶${W} Press Enter to return to main menu...${N}"
+         read -p ""
+         ;;
+ 
+     
+     # =========================================================
+     # EXIT - ENHANCED WITH JISHNU THEME
+     # =========================================================
+     5)
+         clear
+         print_jishnu_logo
+         echo -e "${R}══════════════════════════════════════════════════════════${N}"
+         echo -e "${W}                  SESSION TERMINATED                   ${N}"
+         echo -e "${R}══════════════════════════════════════════════════════════${N}\n"
+         
+         echo -e "${R}┌──────────────────────────────────────────────────────┐${N}"
+         echo -e "${R}│${W}          Thank you for using Hyperdock!          ${R}│${N}"
+         echo -e "${R}│${Y}               Made with ❤️ by Hyperdock           ${R}│${N}"
+         echo -e "${R}└──────────────────────────────────────────────────────┘${N}"
+         
+         echo -e "\n${Y}👋 Goodbye! Come back soon...${N}\n"
+         print_footer
+         sleep 2
+         exit 0
+         ;;
+     
+     *)
+         echo -e "\n${R}╔══════════════════════════════════════════════════════════╗${N}"
+         echo -e "${R}║${W}                ❌ INVALID OPTION!                     ${R}║${N}"
+         echo -e "${R}║${Y}         Please choose between 1-4 only                ${R}║${N}"
+         echo -e "${R}╚══════════════════════════════════════════════════════════╝${N}"
+         sleep 2
+         ;;
+     esac
+ done
