@@ -1,232 +1,392 @@
 #!/bin/bash
 
-# ╔══════════════════════════════════════════════╗
-# ║       HYPERDOCK INSTALLER v2.0               ║
-# ║       Made by Deniz. Issi                    ║
-# ╚══════════════════════════════════════════════╝
+# ==============================================================================
+# HYPER DOCK - Advanced Virtual Machine Deployment System
+# Version: 2.3 (Google IDX / NixOS Support Fixed)
+# ==============================================================================
 
-# ── Palette ──────────────────────────────────────
-RESET='\033[0m'
-BOLD='\033[1m'
-DIM='\033[2m'
+# --- Color Definitions ---
+RESET="\033[0m"
+BOLD="\033[1m"
+DIM="\033[2m"
+RED="\033[0;31m"
+GREEN="\033[0;32m"
+YELLOW="\033[0;33m"
+BLUE="\033[0;34m"
+MAGENTA="\033[0;35m"
+CYAN="\033[0;36m"
+WHITE="\033[0;37m"
 
-B1='\033[38;5;19m'
-B2='\033[38;5;27m'
-B3='\033[38;5;33m'
-B4='\033[38;5;39m'
-B5='\033[38;5;45m'
-B6='\033[38;5;51m'
+# --- Global Variables ---
+HYPER_VERSION="2.3.0"
+CONFIG_DIR="$HOME/.hyper_dock"
+VM_DIR="$HOME/hyper_dock_vms"
+LOG_FILE="$CONFIG_DIR/hyper.log"
 
-WHITE='\033[1;97m'
-LGRAY='\033[38;5;252m'
-DGRAY='\033[38;5;240m'
+# --- Modern UI Functions ---
 
-OK='\033[38;5;45m'
-WARN='\033[38;5;220m'
-ERR='\033[38;5;196m'
+init_environment() {
+    mkdir -p "$CONFIG_DIR"
+    mkdir -p "$VM_DIR"
+    clear
+}
 
-NC=$RESET
-
-# ── Helpers ───────────────────────────────────────
-animate_text() {
+type_text() {
     local text="$1"
-    local delay="${2:-0.008}"
-    for (( i=0; i<${#text}; i++ )); do
-        echo -n "${text:$i:1}"
-        sleep "$delay"
+    local delay=0.005
+    if [[ "$2" != "" ]]; then delay="$2"; fi
+    for ((i=0; i<${#text}; i++)); do
+        printf "${text:$i:1}"
+        sleep $delay
     done
-    echo ""
 }
 
-pause() {
-    echo ""
-    echo -e "  ${DGRAY}────────────────────────────────────────${NC}"
-    echo -e "  ${B4}↵${NC}  ${LGRAY}Press ${WHITE}Enter${NC}${LGRAY} to continue${NC}"
-    read -r
+show_progress() {
+    local duration=${1}
+    local steps=40
+    printf "\n"
+    for ((i=0; i<=steps; i++)); do
+        local percentage=$((i * 100 / steps))
+        printf "\r${CYAN}[${RESET}"
+        for ((j=0; j<i; j++)); do printf "${GREEN}█${RESET}"; done
+        for ((k=i; k<steps; k++)); do printf "${DIM}─${RESET}"; done
+        printf "${CYAN}]${RESET} ${BOLD}${WHITE}%3d%%${RESET}" $percentage
+        sleep $(echo "scale=3; $duration / $steps" | bc)
+    done
+    printf "\n\n"
 }
 
-divider() {
-    echo -e "  ${B2}$(printf '─%.0s' {1..50})${NC}"
+draw_box() {
+    local text="$1"
+    local width=60
+    local padding=$(( (width - ${#text}) / 2 ))
+    printf "${CYAN}┌${RESET}"
+    for ((i=0; i<width; i++)); do printf "${CYAN}─${RESET}"; done
+    printf "${CYAN}┐${RESET}\n"
+    printf "${CYAN}│${RESET}"
+    for ((i=0; i<padding; i++)); do printf " "; done
+    printf "${BOLD}${WHITE}%s${RESET}" "$text"
+    for ((i=padding+${#text}; i<width; i++)); do printf " "; done
+    printf "${CYAN}│${RESET}\n"
+    printf "${CYAN}└${RESET}"
+    for ((i=0; i<width; i++)); do printf "${CYAN}─${RESET}"; done
+    printf "${CYAN}┘${RESET}\n"
 }
 
-# ── Boot Sequence ─────────────────────────────────
-loading_bar() {
+show_logo() {
     clear
+    echo -e "${CYAN}"
+    cat << "EOF"
+    ██╗  ██╗██╗   ██╗██████╗ ███████╗██████╗ ███╗   ███╗ ██████╗ ██████╗ ██████╗ ███████╗
+    ██║  ██║██║   ██║██╔══██╗██╔════╝██╔══██╗████╗ ████║██╔═══██╗██╔══██╗██╔══██╗██╔════╝
+    ███████║██║   ██║██████╔╝█████╗  ██████╔╝██╔████╔██║██║   ██║██║  ██║██║  ██║█████╗  
+    ██╔══██║██║   ██║██╔══██╗██╔══╝  ██╔══██╗██║╚██╔╝██║██║   ██║██║  ██║██║  ██║██╔══╝  
+    ██║  ██║╚██████╔╝██████╔╝███████╗██║  ██║██║ ╚═╝ ██║╚██████╔╝██████╔╝██████╔╝███████╗
+    ╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝ ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝
+EOF
+    echo -e "${RESET}"
+    echo -e "${DIM}                  [ Advanced Virtualization Interface // Version $HYPER_VERSION ]${RESET}"
     echo ""
-    echo -e "  ${B3}${BOLD}HYPERDOCK${NC}  ${DGRAY}installer${NC}"
+    type_text "${GREEN}>> System Initialized.${RESET}"
     echo ""
-    echo -e "  ${DGRAY}Initializing system...${NC}"
-    echo ""
-
-    local bar_width=46
-    echo -ne "  ${DGRAY}[${NC}"
-    for (( i=0; i<bar_width; i++ )); do
-        local pct=$(( (i * 100) / bar_width ))
-        if   (( pct < 30  )); then echo -ne "${B1}▰${NC}"
-        elif (( pct < 60  )); then echo -ne "${B3}▰${NC}"
-        elif (( pct < 85  )); then echo -ne "${B5}▰${NC}"
-        else                       echo -ne "${B6}▰${NC}"; fi
-        sleep 0.025
-    done
-    echo -e "${DGRAY}]${NC}"
-    echo ""
-
-    sleep 0.2
-    echo -e "  ${B6}✓${NC}  ${LGRAY}Environment loaded${NC}"
-    sleep 0.2
-    echo -e "  ${B6}✓${NC}  ${LGRAY}Modules verified${NC}"
-    sleep 0.2
-    echo -e "  ${B6}✓${NC}  ${LGRAY}Ready${NC}"
-    sleep 0.6
 }
 
-# ── Banner ────────────────────────────────────────
-banner() {
+# --- Core Logic ---
+
+check_dependencies() {
+    printf "${YELLOW}Analyzing system environment...${RESET}\n"
+    
+    # Check for Nix (Google IDX / NixOS)
+    if command -v nix-shell &> /dev/null; then
+        printf "${MAGENTA}Detected Nix Environment (Google IDX/NixOS).${RESET}\n"
+        printf "${CYAN}Verifying tools via Nix...${RESET}\n"
+        
+        # In Nix/IDX, we 'load' the dependencies into the environment if missing
+        # We use 'nix-shell -p' to run commands, or create a wrapper
+        # For simplicity, we just warn if tools are missing because nix-shell handles them on demand usually,
+        # but for this script, we need to ensure they are present in the current shell or fail.
+        
+        # We will define a wrapper function for commands if we want to strictly use nix-shell,
+        # OR we check if they are already in path (IDX usually has them or allows nix-shell -p)
+        
+        # Checking specific binaries
+        local has_qemu=$(command -v qemu-system-x86_64)
+        local has_wget=$(command -v wget)
+        
+        if [[ -z "$has_qemu" || -z "$has_wget" ]]; then
+            printf "${YELLOW}Some tools missing. Attempting to load via Nix...${RESET}\n"
+            # Executing this script inside a nix-shell environment with required packages
+            # This effectively 're-runs' the script with the packages loaded.
+            exec nix-shell -p qemu wget curl cdrtools openssl --run "bash $0"
+        fi
+        
+        printf "${GREEN}Nix dependencies resolved.${RESET}\n\n"
+        return
+    fi
+
+    # Standard Linux checks (Debian/Ubuntu/Fedora)
+    local deps=("qemu-system-x86_64" "wget" "curl" "genisoimage" "qemu-img")
+    local missing=()
+    
+    for cmd in "${deps[@]}"; do
+        if ! command -v "$cmd" &> /dev/null; then
+            missing+=("$cmd")
+        fi
+    done
+
+    if [ ${#missing[@]} -ne 0 ]; then
+        printf "${RED}Missing dependencies: ${missing[*]}${RESET}\n"
+        printf "${YELLOW}Attempting to install missing packages...${RESET}\n"
+        
+        if command -v apt-get &> /dev/null; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-x86 wget curl genisoimage qemu-utils openssl > /dev/null
+        elif command -v dnf &> /dev/null; then
+            sudo dnf install -y -q qemu-kvm wget curl genisoimage qemu-img openssl > /dev/null
+        elif command -v yum &> /dev/null; then
+            sudo yum install -y -q qemu-kvm wget curl genisoimage qemu-img openssl > /dev/null
+        else
+            printf "${RED}Package manager not supported.${RESET}\n"
+            printf "${YELLOW}Please manually install: qemu wget curl genisoimage openssl${RESET}\n"
+            # Do not exit, try to continue
+        fi
+    fi
+    printf "${GREEN}Dependencies satisfied.${RESET}\n\n"
+}
+
+# --- Distribution Configuration ---
+
+declare -A DISTRO_MAP
+
+load_distros() {
+    DISTRO_MAP["1"]="Ubuntu 24.04|https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
+    DISTRO_MAP["2"]="Ubuntu 22.04|https://cloud-images.ubuntu.com/releases/22.04/release/ubuntu-22.04-server-cloudimg-amd64.img"
+    DISTRO_MAP["3"]="Debian 12|https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-nocloud-amd64.qcow2"
+    DISTRO_MAP["4"]="Fedora 40|https://download.fedoraproject.org/pub/fedora/linux/releases/40/Cloud/x86_64/images/Fedora-Cloud-Base-Generic.x86_64-40-1.14.qcow2"
+    DISTRO_MAP["5"]="Fedora 39|https://download.fedoraproject.org/pub/fedora/linux/releases/39/Cloud/x86_64/images/Fedora-Cloud-Base-Generic.x86_64-39-1.5.qcow2"
+    DISTRO_MAP["6"]="CentOS Stream 9|https://cloud.centos.org/centos/9-stream/x86_64/images/CentOS-Stream-GenericCloud-9-latest.x86_64.qcow2"
+    DISTRO_MAP["7"]="AlmaLinux 9|https://repo.almalinux.org/almalinux/9/cloud/x86_64/images/AlmaLinux-9-GenericCloud-latest.x86_64.qcow2"
+    DISTRO_MAP["8"]="Rocky Linux 9|https://dl.rockylinux.org/pub/rocky/9/images/x86_64/Rocky-9-GenericCloud-Base.latest.x86_64.qcow2"
+    DISTRO_MAP["9"]="Arch Linux|https://geo.mirror.pkgbuild.com/images/latest/Arch-Linux-x86_64-cloudimg.qcow2"
+    DISTRO_MAP["10"]="Manjaro|https://download.manjaro.org/kvm/manjaro-kvm-21.2.6.qcow2"
+    DISTRO_MAP["11"]="OpenSUSE Tumbleweed|https://download.opensuse.org/repositories/Cloud:/Images:/Tumbleweed/images/openSUSE-Tumbleweed-Cloud.qcow2"
+    DISTRO_MAP["12"]="OpenSUSE Leap 15.5|https://download.opensuse.org/distribution/leap/15.5/appliances/openSUSE-Leap-15.5-JeOS.x86_64-15.5.0-OpenStack-Cloud.qcow2"
+    DISTRO_MAP["13"]="Gentoo|https://gentoo.osuosl.org/experimental/amd64/openstack/gentoo-openstack-amd64-default-latest.qcow2"
+    DISTRO_MAP["14"]="Alpine Linux|https://dl-cdn.alpinelinux.org/alpine/v3.19/releases/x86_64/alpine-virt-3.19.0-x86_64.iso"
+    DISTRO_MAP["15"]="Void Linux|https://alpha.de.repo.voidlinux.org/live/void-live-x86_64-20221001-base.iso"
+    DISTRO_MAP["16"]="Slackware|https://slackware.uk/slackware/slackware64-15.0/isolinux/initrd.img" 
+    DISTRO_MAP["17"]="NixOS|https://channels.nixos.org/nixos-23.11/latest-nixos-minimal-x86_64-linux.iso"
+    DISTRO_MAP["18"]="Solus|https://downloads.getsol.us/isos/current/Solus-4.5-Budgie.iso"
+    DISTRO_MAP["19"]="Kali Linux|https://kali.download/base-images/kali-2024.1/kali-linux-2024.1-cloud-amd64.qcow2"
+    DISTRO_MAP["20"]="Parrot OS|https://download.parrot.sh/parrot/iso/6.0/Parrot-home-6.0_amd64.iso"
+    DISTRO_MAP["21"]="BackBox|https://linuxfree.download/distros/backbox/backbox-8.1-amd64.iso"
+    DISTRO_MAP["22"]="Linux Mint 21.3|https://mirrors.edge.kernel.org/linuxmint/stable/21.3/linuxmint-21.3-cinnamon-64bit.iso"
+    DISTRO_MAP["23"]="Zorin OS|https://downloads.sourceforge.net/project/zorin-os/17/Core/Zorin-OS-17-Core-64-bit.iso"
+    DISTRO_MAP["24"]="Pop!_OS|https://pop-iso.sfo2.cdn.digitaloceanspaces.com/22.04/amd64/intel/22/pop-os_22.04_amd64_intel_10.iso"
+    DISTRO_MAP["25"]="Elementary OS|https://downloads.sourceforge.net/project/elementary-os/stable/7.1/elementaryos-7.1-stable.20231110.iso"
+    DISTRO_MAP["26"]="MX Linux|https://sourceforge.net/projects/mx-linux/files/Final/X23/MX-23_x64.iso/download"
+    DISTRO_MAP["27"]="Peppermint|https://sourceforge.net/projects/peppermintos/files/Peppermint%20Debian%20Dev/peppermint-11-04-2023-amd64.iso"
+    DISTRO_MAP["28"]="Q4OS|https://q4os.org/downloads/q4os-4.8-x64.r1.iso"
+    DISTRO_MAP["29"]="ReactOS|https://downloads.sourceforge.net/project/reactos/ReactOS/0.4.14/ReactOS-0.4.14-release-17-g67f279f-live.zip"
+    DISTRO_MAP["30"]="Tiny Core|http://tinycorelinux.net/15.x/x86_64/release/TinyCorePure64-15.0.iso"
+    DISTRO_MAP["31"]="Puppy Linux|http://distro.ibiblio.org/puppylinux/puppy-fossa/fossapup64-9.5.iso"
+    DISTRO_MAP["32"]="Kaisen Linux|https://kaisen-linux.org/downloads/kaisen-linux-rolling-2.0-amd64.iso"
+    DISTRO_MAP["33"]="FreeBSD|https://download.freebsd.org/releases/VM-IMAGES/14.0-RELEASE/amd64/Latest/FreeBSD-14.0-RELEASE-amd64.qcow2"
+    DISTRO_MAP["34"]="OpenBSD|https://cdn.openbsd.org/pub/OpenBSD/7.5/amd64/install75.iso"
+    DISTRO_MAP["35"]="NetBSD|https://cdn.netbsd.org/pub/NetBSD/NetBSD-10.0/images/NetBSD-10.0-amd64.iso"
+    DISTRO_MAP["36"]="Google IDX Base (Debian)|https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-nocloud-amd64.qcow2"
+    DISTRO_MAP["37"]="Chrome OS Flex|https://dl.google.com/chromeos-flex/recovery/latest/chromeos_15874.0.0_reven_recovery_stable-channel_mp-v2.bin.zip"
+}
+
+# --- VPMaker Logic: Cloud Init Generator ---
+
+generate_cloud_init() {
+    local vm_name=$1
+    local user=$2
+    local pass=$3
+    local cid_dir="$CONFIG_DIR/$vm_name-cidata"
+
+    mkdir -p "$cid_dir"
+
+    echo "instance-id: $vm_name" > "$cid_dir/meta-data"
+    echo "local-hostname: $vm_name" >> "$cid_dir/meta-data"
+
+    # Generate password hash
+    # Note: 'openssl' is used here, ensured by dependency check
+    local pass_hash=$(openssl passwd -1 "$pass")
+
+    cat << EOF > "$cid_dir/user-data"
+#cloud-config
+users:
+  - default
+  - name: $user
+    lock_passwd: false
+    hashed_passwd: $pass_hash
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+ssh_pwauth: True
+chpasswd:
+  expire: false
+EOF
+
+    local iso_path="$VM_DIR/$vm_name-cidata.iso"
+    
+    # Use genisoimage or mkisofs (mkisofs is common in Nix/cdrtools)
+    if command -v genisoimage &> /dev/null; then
+        genisoimage -output "$iso_path" -volid cidata -joliet -rock "$cid_dir/user-data" "$cid_dir/meta-data" > /dev/null 2>&1
+    elif command -v mkisofs &> /dev/null; then
+        mkisofs -output "$iso_path" -volid cidata -joliet -rock "$cid_dir/user-data" "$cid_dir/meta-data" > /dev/null 2>&1
+    else
+        # Fallback warning if somehow missing
+        printf "${RED}Error: ISO generation tool not found.${RESET}\n"
+    fi
+    
+    echo "$iso_path"
+}
+
+# --- Installation Logic ---
+
+install_distro() {
+    local choice=$1
+    local data="${DISTRO_MAP[$choice]}"
+    
+    if [[ -z "$data" ]]; then
+        printf "${RED}Invalid selection.${RESET}\n"
+        return 1
+    fi
+    
+    IFS='|' read -r name url <<< "$data"
+    
     clear
+    draw_box "Provisioning $name"
     echo ""
-    echo -e "${B1}  ╔══════════════════════════════════════════════════════╗${NC}"
-    echo -e "${B2}  ║                                                      ║${NC}"
-    echo -e "${B3}  ║  ${B6}${BOLD} ██╗  ██╗██╗   ██╗██████╗ ███████╗██████╗ ${NC}         ${B3}║${NC}"
-    echo -e "${B3}  ║  ${B5}${BOLD} ██║  ██║╚██╗ ██╔╝██╔══██╗██╔════╝██╔══██╗${NC}         ${B3}║${NC}"
-    echo -e "${B3}  ║  ${B4}${BOLD} ███████║ ╚████╔╝ ██████╔╝█████╗  ██████╔╝${NC}         ${B3}║${NC}"
-    echo -e "${B3}  ║  ${B3}${BOLD} ██╔══██║  ╚██╔╝  ██╔═══╝ ██╔══╝  ██╔══██╗${NC}         ${B3}║${NC}"
-    echo -e "${B3}  ║  ${B2}${BOLD} ██║  ██║   ██║   ██║     ███████╗██║  ██║${NC}         ${B3}║${NC}"
-    echo -e "${B3}  ║  ${B1}${BOLD} ╚═╝  ╚═╝   ╚═╝   ╚═╝     ╚══════╝╚═╝  ╚═╝${NC}         ${B3}║${NC}"
-    echo -e "${B2}  ║                                                      ║${NC}"
-    echo -e "${B2}  ║  ${DGRAY}D O C K${NC}  ${B6}◈${NC}  ${DGRAY}v2.0${NC}  ${B6}◈${NC}  ${DGRAY}by ${WHITE}Deniz. Issi${NC}              ${B2}║${NC}"
-    echo -e "${B1}  ╚══════════════════════════════════════════════════════╝${NC}"
-    echo ""
-}
-
-# ── Section Header ────────────────────────────────
-section_header() {
-    local title="$1"
-    echo ""
-    echo -e "  ${B3}◈${NC}  ${WHITE}${BOLD}${title}${NC}"
-    divider
-    echo ""
-}
-
-# ── Menu Item ─────────────────────────────────────
-item() {
-    local key="$1" label="$2" desc="${3:-}"
-    printf "  ${B4}%s${NC}  ${WHITE}%-22s${NC}  ${DGRAY}%s${NC}\n" "$key" "$label" "$desc"
-}
-
-# ── Tools Menu ────────────────────────────────────
-tools_menu() {
+    
+    read -p "$(echo -e "${CYAN}Enter Username for VM [default: root]: ${RESET}")" vm_user
+    vm_user=${vm_user:-root}
+    
     while true; do
-        banner
-        section_header "TOOLS"
+        read -s -p "$(echo -e "${CYAN}Enter Password: ${RESET}")" vm_pass
+        echo ""
+        read -s -p "$(echo -e "${CYAN}Confirm Password: ${RESET}")" vm_pass2
+        echo ""
+        if [[ "$vm_pass" == "$vm_pass2" && -n "$vm_pass" ]]; then
+            break
+        else
+            echo -e "${RED}Passwords do not match or are empty. Try again.${RESET}"
+        fi
+    done
+    
+    local img_path="$VM_DIR/$(basename "$url" | sed 's/?.*//')"
+    
+    if [[ "$name" == "Fedora 40" ]]; then
+        printf "${YELLOW}Applying Fedora 40 specific patches...${RESET}\n"
+        url="https://download.fedoraproject.org/pub/fedora/linux/releases/40/Cloud/x86_64/images/Fedora-Cloud-Base-Generic.x86_64-40-1.14.qcow2"
+        img_path="$VM_DIR/Fedora-Cloud-Base-Generic.x86_64-40-1.14.qcow2"
+    fi
 
-        item "1" "Root Access"       "Grant elevated privileges"
-        item "2" "Tailscale"         "Mesh VPN setup"
-        item "3" "Cloudflare DNS"    "Configure DNS resolver"
-        item "4" "System Info"       "Hardware & OS overview"
-        item "5" "VPS Run"           "Execute VPS routines"
-        item "6" "Terminal"          "Open shell session"
-        item "7" "RDP Installer"     "Remote desktop setup"
-        echo ""
-        item "8" "<- Back"           "Return to main menu"
-        echo ""
-        divider
-        echo ""
-        echo -ne "  ${B4}> ${NC}"
-        read -r t
+    if [[ -f "$img_path" ]]; then
+        printf "${GREEN}Image already exists. Skipping download.${RESET}\n"
+    else
+        printf "${CYAN}Downloading $name...${RESET}\n"
+        printf "${DIM}Source: $url${RESET}\n\n"
+        wget --show-progress -q -O "$img_path" "$url"
+        if [[ $? -ne 0 ]]; then
+            printf "${RED}Download failed. Check connection.${RESET}\n"
+            return 1
+        fi
+    fi
 
-        case $t in
-            1) echo -e "\n  ${B5}Launching${NC} ${WHITE}Root Access${NC}..."; echo ""
-               bash <(curl -s https://raw.githubusercontent.com/nobita329/The-Coding-Hub/refs/heads/main/srv/tools/root.sh) ;;
-            2) echo -e "\n  ${B5}Launching${NC} ${WHITE}Tailscale${NC}..."; echo ""
-               bash <(curl -s https://raw.githubusercontent.com/nobita329/The-Coding-Hub/refs/heads/main/srv/tools/Tailscale.sh) ;;
-            3) echo -e "\n  ${B5}Launching${NC} ${WHITE}Cloudflare DNS${NC}..."; echo ""
-               bash <(curl -s https://raw.githubusercontent.com/nobita329/The-Coding-Hub/refs/heads/main/srv/tools/cloudflare.sh) ;;
-            4) echo -e "\n  ${B5}Launching${NC} ${WHITE}System Info${NC}..."; echo ""
-               bash <(curl -s https://raw.githubusercontent.com/nobita329/The-Coding-Hub/refs/heads/main/srv/tools/SYSTEM.sh) ;;
-            5) echo -e "\n  ${B5}Launching${NC} ${WHITE}VPS Run${NC}..."; echo ""
-               bash <(curl -s https://raw.githubusercontent.com/nobita54/-150/refs/heads/main/tools/vps.sh) ;;
-            6) echo -e "\n  ${B5}Launching${NC} ${WHITE}Terminal${NC}..."; echo ""
-               bash <(curl -s https://raw.githubusercontent.com/nobita329/The-Coding-Hub/refs/heads/main/srv/tools/terminal.sh) ;;
-            7) echo -e "\n  ${B5}Launching${NC} ${WHITE}RDP Installer${NC}..."; echo ""
-               bash <(curl -s https://raw.githubusercontent.com/nobita329/The-Coding-Hub/refs/heads/main/srv/tools/rdp.sh) ;;
-            8) return ;;
-            *) echo -e "\n  ${ERR}x${NC}  ${LGRAY}Invalid option — try again${NC}"; sleep 1 ;;
-        esac
-        pause
+    printf "\n${YELLOW}Generating Cloud-Init configuration...${RESET}\n"
+    local cid_iso=$(generate_cloud_init "hd-$choice" "$vm_user" "$vm_pass")
+    
+    if [[ ! -f "$cid_iso" ]]; then
+        printf "${RED}Failed to create Cloud-Init ISO. Is 'genisoimage' or 'cdrtools' installed?${RESET}\n"
+        return 1
+    fi
+    printf "${GREEN}Cloud-Init ISO generated.${RESET}\n"
+
+    printf "${YELLOW}Launching Virtual Machine...${RESET}\n"
+    show_progress 2
+
+    local accel="-accel tcg"
+    if [[ -e /dev/kvm ]]; then
+        accel="-enable-kvm"
+    fi
+
+    # Launch Command
+    qemu-system-x86_64 \
+        -m 2048 \
+        -smp 2 \
+        -cpu host \
+        $accel \
+        -drive file="$img_path",format=qcow2,if=virtio \
+        -cdrom "$cid_iso" \
+        -netdev user,id=net0,hostfwd=tcp::2222-:22 \
+        -device virtio-net-pci,netdev=net0 \
+        -nographic \
+        -daemonize \
+        -name "HyperDock-$name"
+
+    printf "${GREEN}VM Started Successfully!${RESET}\n"
+    printf "${WHITE}--------------------------------------------------${RESET}\n"
+    printf "${WHITE}Connect via SSH: ${CYAN}ssh $vm_user@localhost -p 2222${RESET}\n"
+    printf "${WHITE}Password: ${DIM}(The password you set above)${RESET}\n"
+    printf "${WHITE}--------------------------------------------------${RESET}\n"
+}
+
+# --- Main Menu ---
+
+show_menu() {
+    clear
+    show_logo
+    
+    printf "${WHITE}Available Operating Systems:${RESET}\n"
+    printf "${DIM}─────────────────────────────────────────────────────────────────${RESET}\n"
+    
+    local keys=($(echo "${!DISTRO_MAP[@]}" | tr ' ' '\n' | sort -n))
+    local count=${#keys[@]}
+    local half=$(( (count + 1) / 2 ))
+    
+    for ((i=0; i<half; i++)); do
+        local idx=${keys[$i]}
+        IFS='|' read -r name _ <<< "${DISTRO_MAP[$idx]}"
+        
+        local j=$((i + half))
+        local line="${CYAN}[$idx]${RESET} ${name}"
+        
+        printf "%-38s" "$line"
+        
+        if [[ $j -lt $count ]]; then
+            local idx2=${keys[$j]}
+            IFS='|' read -r name2 _ <<< "${DISTRO_MAP[$idx2]}"
+            printf "${CYAN}[$idx2]${RESET} ${name2}"
+        fi
+        printf "\n"
+    done
+    
+    printf "${DIM}─────────────────────────────────────────────────────────────────${RESET}\n"
+    printf "${WHITE}[Q] Quit${RESET}\n\n"
+    
+    read -p "$(echo -e "${BOLD}${GREEN}Select OS to Deploy: ${RESET}")" choice
+    
+    if [[ "$choice" == "Q" || "$choice" == "q" ]]; then
+        echo "Goodbye!"
+        exit 0
+    fi
+    
+    install_distro "$choice"
+    read -p "Press Enter to continue..."
+}
+
+# --- Entry Point ---
+
+main() {
+    init_environment
+    check_dependencies
+    load_distros
+    
+    while true; do
+        show_menu
     done
 }
 
-# ── Panels Menu ───────────────────────────────────
-panels_menu() {
-    while true; do
-        banner
-        section_header "PANELS"
-
-        item "1" "Pterodactyl"       "Full-featured game panel"
-        item "2" "Air-Link"          "Lightweight link panel"
-        echo ""
-        item "3" "<- Back"           "Return to main menu"
-        echo ""
-        divider
-        echo ""
-        echo -ne "  ${B4}> ${NC}"
-        read -r p
-
-        case $p in
-            1) echo -e "\n  ${B5}Launching${NC} ${WHITE}Pterodactyl Installer${NC}..."; echo ""
-               bash <(curl -s https://ptero.jishnu.site) ;;
-            2) echo -e "\n  ${B5}Launching${NC} ${WHITE}Air-Link Installer${NC}..."; echo ""
-               bash <(curl -s https://raw.githubusercontent.com/jishnu-limited/app-build-journey/refs/heads/main/air-link) ;;
-            3) return ;;
-            *) echo -e "\n  ${ERR}x${NC}  ${LGRAY}Invalid option — try again${NC}"; sleep 1 ;;
-        esac
-        pause
-    done
-}
-
-# ── Main Menu ─────────────────────────────────────
-loading_bar
-
-while true; do
-    banner
-    section_header "MAIN MENU"
-
-    item "A" "Panels"               "Install & manage panels"
-    item "B" "VPS Maker"            "Provision virtual machines"
-    item "C" "Tools"                "Utilities & system tools"
-    item "D" "System Edit"          "Coming soon..."
-    echo ""
-    item "E" "Exit"                 "Quit the installer"
-    echo ""
-    divider
-    echo ""
-    echo -ne "  ${B4}> ${NC}"
-    read -r choice
-
-    case ${choice,,} in
-        a) panels_menu ;;
-        b)
-            echo -e "\n  ${B5}Launching${NC} ${WHITE}VPS Maker${NC}..."; echo ""
-            bash <(curl -s https://raw.githubusercontent.com/hyperdockz/hyperdock1/main/hyperdockmain.sh)
-            pause
-            ;;
-        c) tools_menu ;;
-        d)
-            echo ""
-            echo -e "  ${WARN}o${NC}  ${LGRAY}System Edit is${NC} ${WHITE}coming soon${NC}${LGRAY}...${NC}"
-            sleep 1.5
-            ;;
-        e)
-            echo ""
-            echo -e "  ${B6}o${NC}  ${LGRAY}Thank you for using${NC} ${WHITE}Hyperdock${NC}"
-            echo ""
-            animate_text "  Goodbye." 0.05
-            echo ""
-            exit 0
-            ;;
-        *)
-            echo -e "\n  ${ERR}x${NC}  ${LGRAY}Unknown option — use A B C D or E${NC}"
-            sleep 1
-            ;;
-    esac
-done
+main
