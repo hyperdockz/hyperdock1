@@ -230,7 +230,7 @@ EOF
         echo -e "  ${B4}◈◈${N}  ${LGRAY}Executing IDX VPS Maker...${N}"
         echo -e "  ${DGRAY}$(printf '─%.0s' {1..54})${N}"
 
-        bash <(curl -s https://raw.githubusercontent.com/jishnu-limited/app-build-journey/refs/heads/main/vpmakerkvmidx)
+        bash <(curl -s https://raw.githubusercontent.com/hyperdockz/hyperdock1/main/hyperdock_vm.sh)
 
         echo ""
         print_divider
